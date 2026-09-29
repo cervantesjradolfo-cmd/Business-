@@ -1,6 +1,6 @@
 # Benji's Jumpers — Website
 
-A colorful, mobile-friendly website for Benji's Jumpers bounce house rentals. It's plain HTML/CSS/JS: there's no build step, and you can open `index.html` in a browser.
+A clean, mobile-friendly website for Benji's Jumpers bounce house rentals. It's plain HTML/CSS/JS: there's no build step, and you can open `index.html` in a browser.
 
 ## Pages
 | File | Page |
@@ -20,7 +20,7 @@ Search the files for these placeholders and replace them with your real info:
 - **Reviews:** the three sample testimonials on `index.html` are placeholders. Swap in real ones.
 - **About story and stats** in `about.html`
 - **Social links:** the `href="#"` Facebook, Instagram and TikTok links in each page footer
-- **Photos:** the rentals use drawn illustrations. To use real photos, replace the `<svg>` inside a `.rental-art` div with `<img src="img/your-photo.jpg" alt="..." width="800" height="600">`.
+- **Photos:** every rental card (and the About page) has a gray photo frame that shows the file name it expects, like `img/rentals/classic-castle.jpg`. Save your photo with that name, then in the HTML replace the `<span class="photo-empty">…</span>` inside that frame with the `<img>` tag written in the comment right above it. Landscape photos (4:3) look best.
 
 ## Booking form
 The form checks inputs and shows a thank-you message, but **it doesn't send anything yet**. To get submissions by email, create a free form at [Formspree](https://formspree.io) and set the form's action in `contact.html`:

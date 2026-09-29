@@ -63,6 +63,8 @@ if (rentalSelect && params.get("rental")) {
   const opt = [...rentalSelect.options].find((o) => o.value === wanted);
   if (opt) rentalSelect.value = wanted;
 }
+const dateField = document.getElementById("date");
+if (dateField && params.get("date")) dateField.value = params.get("date");
 
 // Booking form validation.
 // NOTE: this form has no backend yet. To receive submissions by email, set the
