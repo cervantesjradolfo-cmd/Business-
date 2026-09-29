@@ -48,6 +48,17 @@ More complete versions of the site, with the same pages and content in a differe
 | `demos/backyard/` | **Backyard:** sky, sunshine and grass; summer backyard scene |
 | `demos/rentalpro/` | **Rental Pro:** electric blue and orange; laid out like top party-rental sites, with a top bar, availability search, category tiles, trust strip, reviews and service area |
 
+
+### JumpJoy (interactive one-page demo)
+`demos/jumpjoy/` is a separate, self-contained demo under a placeholder brand (**JumpJoy Party Rentals**). It's a single page with:
+- **Availability check:** a date checker in the hero.
+- **Rentals:** filters by type and age, sorting, favorites, and a quick-view popup.
+- **Party builder:** a live price estimate from rentals, extras, hours and delivery distance.
+- **Gallery and reviews:** a photo lightbox and an auto-playing reviews carousel with pause.
+- **FAQ and booking:** an FAQ accordion and a booking form with validation.
+
+Its pictures in `demos/jumpjoy/img/` are rendered previews. Replace them with real or AI photos using the same file names. Rentals, prices and extras are defined at the top of `demos/jumpjoy/js/app.js`.
+
 Big Top, Pop Party, Backyard and Rental Pro show shiny drawn inflatables on the rental cards until real photos are added. Each card has a comment with the `<img>` tag to swap in.
 
 Each folder is self-contained (its own `css/`, `js/` and `img/`). Once a style is picked, its files can replace the root site.
