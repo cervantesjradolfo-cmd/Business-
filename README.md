@@ -34,3 +34,14 @@ Every color, font and spacing value lives at the top of `css/styles.css` under `
 
 ## Hosting
 Free option: in the GitHub repo, go to **Settings → Pages**, choose this branch with the `/ (root)` folder, and save.
+
+## Alternate style demos
+Two more complete versions of the site, with the same pages and content in a different style, live in `demos/`:
+
+| Folder | Style |
+|--------|-------|
+| `/` (root) | **Classic:** navy, blue and amber; clean and professional |
+| `demos/sunny/` | **Sunny:** white, coral and sky blue; rounded and photo-forward |
+| `demos/luxe/` | **Luxe:** forest green and gold, serif headings; premium feel |
+
+Each folder is self-contained (its own `css/`, `js/` and `img/`). Once a style is picked, its files can replace the root site.
