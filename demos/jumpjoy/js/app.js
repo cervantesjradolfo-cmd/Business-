@@ -2,18 +2,18 @@
 
 // ---- Rental catalog (edit names, prices and details here) ----
 const RENTALS = [
-  { id: "castle", name: "Classic Castle", type: "bounce", ages: ["kids"], img: "img/castle.jpg", price: 149, size: "13' × 13'", cap: "Up to 8 kids", badge: "Most popular", rank: 1,
-    desc: "Our original bouncer. Bright, roomy and perfect for backyard birthdays.", features: ["Mesh windows so parents can watch", "Fits most backyards", "Works on grass or concrete"] },
-  { id: "combo", name: "Mega Combo", type: "combo", ages: ["kids", "big"], img: "img/combo.jpg", price: 219, size: "22' × 16'", cap: "Up to 10 kids", badge: "Best value", rank: 2,
-    desc: "Bounce area, climbing wall and slide in one. Use it wet or dry.", features: ["Bounce + climb + slide", "Wet or dry use", "Great for mixed ages"] },
-  { id: "splash", name: "Tropical Splash Slide", type: "water", ages: ["big"], img: "img/splash.jpg", price: 229, size: "30' × 12'", cap: "1 slider at a time", badge: "Summer fave", rank: 3,
-    desc: "An 18-foot water slide with a splash pool at the bottom. Beat the heat!", features: ["18 ft tall slide", "Splash pool landing", "Hose hookup included"] },
-  { id: "princess", name: "Princess Palace", type: "bounce", ages: ["kids"], img: "img/princess.jpg", price: 169, size: "15' × 15'", cap: "Up to 10 kids", rank: 4,
-    desc: "A pink-and-purple palace fit for every little prince and princess.", features: ["Extra-large bounce floor", "Shaded roof", "Perfect for themed parties"] },
-  { id: "ninja", name: "Ninja Obstacle Course", type: "obstacle", ages: ["big"], img: "img/ninja.jpg", price: 299, size: "40' × 10'", cap: "2 racers at a time", rank: 5,
-    desc: "Pop-up obstacles, a climb and a slide finish. Race your friends!", features: ["Side-by-side racing lanes", "Great for schools & big groups", "Climb + slide finish"] },
-  { id: "tots", name: "Tiny Tots Bouncer", type: "bounce", ages: ["toddler"], img: "img/tots.jpg", price: 119, size: "10' × 10'", cap: "Up to 5 toddlers", rank: 6,
-    desc: "A low, gentle bouncer made just for little ones.", features: ["Low walls, easy entry", "Soft, gentle bounce", "Indoor-friendly size"] },
+  { id: "sports", name: "Sports Arena Combo", type: "combo", ages: ["kids", "big"], img: "img/photo-sports.jpg", price: 199, size: "15' × 19'", cap: "Up to 10 kids", badge: "Most popular", rank: 1,
+    desc: "A sporty bounce house with a built-in climb and slide. A backyard favorite.", features: ["Bounce + climb + slide", "Mesh windows so parents can watch", "Fits most backyards"] },
+  { id: "carnival", name: "Carnival Mega Combo", type: "combo", ages: ["kids", "big"], img: "img/photo-hero.jpg", price: 249, size: "20' × 18'", cap: "Up to 12 kids", badge: "Best value", rank: 2,
+    desc: "A big covered combo with a bounce floor, obstacles and a slide inside.", features: ["Covered roof for shade", "Inside obstacles + slide", "Great for mixed ages"] },
+  { id: "bigslide", name: "Big Wave Slide", type: "water", ages: ["big"], img: "img/photo-bigslide.jpg", price: 279, size: "30' × 12'", cap: "1 slider at a time", badge: "Summer fave", rank: 3,
+    desc: "A tall, fast slide that works wet or dry. The showstopper of any party.", features: ["Wet or dry use", "Tall double-lane slide", "Hose hookup included"] },
+  { id: "dalmatian", name: "Dalmatian Fire House", type: "bounce", ages: ["toddler", "kids"], img: "img/photo-dalmatian.jpg", price: 159, size: "13' × 13'", cap: "Up to 8 kids", rank: 4,
+    desc: "A fire-house themed bouncer with a little slide. Perfect for younger kids.", features: ["Gentle bounce for little ones", "Front slide exit", "Great for themed parties"] },
+  { id: "giraffe", name: "Safari Giraffe Bouncer", type: "bounce", ages: ["kids"], img: "img/photo-giraffe.jpg", price: 169, size: "15' × 15'", cap: "Up to 10 kids", rank: 5,
+    desc: "A bright safari bouncer with a big open jump floor.", features: ["Extra-large bounce floor", "Open sides for airflow", "Easy to watch from outside"] },
+  { id: "jungle", name: "Jungle Obstacle Course", type: "obstacle", ages: ["big"], img: "img/photo-jungle.jpg", price: 329, size: "40' × 12'", cap: "2 racers at a time", rank: 6,
+    desc: "Side-by-side racing lanes, pop-up obstacles and a slide finish.", features: ["Side-by-side racing lanes", "Great for schools & big groups", "Climb + slide finish"] },
 ];
 const TYPE_LABEL = { bounce: "Bounce house", combo: "Combo", water: "Water slide", obstacle: "Obstacle course" };
 const AGE_LABEL = { toddler: "Ages 1–4", kids: "Ages 3–10", big: "Ages 5+" };

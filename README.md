@@ -57,7 +57,7 @@ More complete versions of the site, with the same pages and content in a differe
 - **Gallery and reviews:** a photo lightbox and an auto-playing reviews carousel with pause.
 - **FAQ and booking:** an FAQ accordion and a booking form with validation.
 
-Its pictures in `demos/jumpjoy/img/` are rendered previews. Replace them with real or AI photos using the same file names. Rentals, prices and extras are defined at the top of `demos/jumpjoy/js/app.js`.
+Its photos in `demos/jumpjoy/img/` are real bounce house photos from Wikimedia Commons (CC BY / CC BY-SA / CC0 / public domain), credited in the page footer under **Photo credits**. They're placeholders: swap in the business's own photos using the same file names, then remove the credits for any photos you replaced. Rentals, prices and extras are defined at the top of `demos/jumpjoy/js/app.js`.
 
 Big Top, Pop Party, Backyard and Rental Pro show shiny drawn inflatables on the rental cards until real photos are added. Each card has a comment with the `<img>` tag to swap in.
 

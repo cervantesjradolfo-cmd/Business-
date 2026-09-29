@@ -1,5 +1,5 @@
 /* JumpJoy Party Rentals — demo
-   HERO PHOTO: replace img/hero-photo.jpg with a real or AI photo (landscape, ~1920x1080, subject on the right).
+   HERO PHOTO: replace img/photo-hero.jpg with a real or AI photo (landscape, ~1920x1080, subject on the right).
    Direction: kid-friendly but professional. White base, one confident blue,
    small doses of sunshine / mint / coral. Rounded display type (Fredoka) + Nunito. */
 :root {
@@ -80,8 +80,10 @@ a { color: var(--blue); }
 
 /* Hero */
 .hero { position: relative; overflow: hidden; min-height: 640px; display: flex; align-items: center; padding-block: 64px 72px; }
-.hero-bg { position: absolute; inset: 0; background: url("../img/hero-photo.jpg") 70% center / cover no-repeat; transform: scale(1.04); }
-.hero::before { content: ""; position: absolute; inset: 0; z-index: 1; background: linear-gradient(90deg, rgba(255,255,255,.96) 0%, rgba(255,255,255,.9) 38%, rgba(255,255,255,.35) 60%, rgba(255,255,255,0) 75%); }
+.hero { background: #f4f8f2; }
+.hero-bg { position: absolute; inset: 0; background: url("../img/photo-hero.jpg") right 30% / cover no-repeat; }
+@media (min-width: 901px) { .hero-bg { left: 34%; } }
+.hero::before { content: ""; position: absolute; inset: 0; z-index: 1; background: linear-gradient(90deg, #f7faf5 0%, #f7faf5 36%, rgba(247,250,245,.85) 44%, rgba(247,250,245,0) 58%); }
 .hero-inner { position: relative; z-index: 2; }
 .hero-copy { max-width: 580px; }
 .kicker { display: inline-flex; align-items: center; gap: 8px; padding: 6px 14px 6px 10px; font-weight: 800; font-size: .95rem; background: #fff; border: 1px solid var(--line); border-radius: 999px; box-shadow: var(--shadow); }
@@ -104,7 +106,7 @@ a { color: var(--blue); }
 @media (max-width: 900px) {
   .hero { min-height: 0; padding-block: 40px 56px; }
   .hero-bg { background-position: 78% bottom; }
-  .hero::before { background: linear-gradient(180deg, rgba(255,255,255,.96) 0%, rgba(255,255,255,.9) 60%, rgba(255,255,255,.55) 100%); }
+  .hero::before { background: linear-gradient(180deg, rgba(247,250,245,.95) 0%, rgba(247,250,245,.86) 55%, rgba(247,250,245,.45) 100%); }
 }
 
 /* Trust */
@@ -281,8 +283,14 @@ input[type="range"] { width: 100%; accent-color: var(--blue); height: 32px; }
 .logo-light b { color: var(--sun); }
 .small { font-size: .85rem; }
 
+.credits { max-width: 760px; margin-top: 8px; font-size: .85rem; text-align: left; }
+.credits summary { cursor: pointer; text-align: center; font-weight: 700; color: #dfe6f5; }
+.credits ul { margin: 10px 0 0; padding-left: 18px; display: grid; gap: 4px; }
+.credits a { color: #9fc0ff; }
+
 /* Floating party button */
 .fab { position: fixed; right: 20px; bottom: calc(20px + env(safe-area-inset-bottom, 0px)); z-index: 60; display: inline-flex; align-items: center; gap: 8px; padding: 12px 18px; font-family: var(--font-display); font-weight: 600; font-size: 1.05rem; color: #fff; text-decoration: none; background: var(--blue); border-radius: 999px; box-shadow: var(--shadow-lg); animation: pop-in 300ms var(--ease); }
+.fab[hidden] { display: none; }
 .fab-count { display: inline-flex; align-items: center; justify-content: center; min-width: 26px; height: 26px; padding: 0 6px; font-size: .9rem; color: var(--ink); background: var(--sun); border-radius: 999px; }
 .fab.bump { animation: bump 300ms var(--ease); }
 
@@ -307,8 +315,8 @@ input[type="range"] { width: 100%; accent-color: var(--blue); height: 32px; }
 .lightbox p { margin: 0; padding: 14px 20px; color: #dfe6f5; font-weight: 700; }
 
 /* Toast */
-.toast { position: fixed; left: 50%; bottom: 24px; z-index: 80; transform: translate(-50%, 140%); padding: 12px 20px; font-weight: 800; color: #fff; background: var(--ink); border-radius: 999px; box-shadow: var(--shadow-lg); transition: transform 300ms var(--ease); pointer-events: none; }
-.toast.show { transform: translate(-50%, 0); }
+.toast { position: fixed; left: 50%; bottom: 24px; z-index: 80; transform: translate(-50%, 140%); padding: 12px 20px; font-weight: 800; color: #fff; background: var(--ink); border-radius: 999px; box-shadow: var(--shadow-lg); transition: transform 300ms var(--ease), opacity 300ms var(--ease); pointer-events: none; opacity: 0; }
+.toast.show { transform: translate(-50%, 0); opacity: 1; }
 
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
