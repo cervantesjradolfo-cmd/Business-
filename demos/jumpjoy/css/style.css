@@ -1,4 +1,5 @@
 /* JumpJoy Party Rentals — demo
+   HERO PHOTO: replace img/hero-photo.jpg with a real or AI photo (landscape, ~1920x1080, subject on the right).
    Direction: kid-friendly but professional. White base, one confident blue,
    small doses of sunshine / mint / coral. Rounded display type (Fredoka) + Nunito. */
 :root {
@@ -79,7 +80,7 @@ a { color: var(--blue); }
 
 /* Hero */
 .hero { position: relative; overflow: hidden; min-height: 640px; display: flex; align-items: center; padding-block: 64px 72px; }
-.hero-bg { position: absolute; inset: 0; background: url("../img/hero-backyard.jpg") 70% center / cover no-repeat; transform: scale(1.04); }
+.hero-bg { position: absolute; inset: 0; background: url("../img/hero-photo.jpg") 70% center / cover no-repeat; transform: scale(1.04); }
 .hero::before { content: ""; position: absolute; inset: 0; z-index: 1; background: linear-gradient(90deg, rgba(255,255,255,.96) 0%, rgba(255,255,255,.9) 38%, rgba(255,255,255,.35) 60%, rgba(255,255,255,0) 75%); }
 .hero-inner { position: relative; z-index: 2; }
 .hero-copy { max-width: 580px; }
