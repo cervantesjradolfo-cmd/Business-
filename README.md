@@ -46,7 +46,8 @@ More complete versions of the site, with the same pages and content in a differe
 | `demos/bigtop/` | **Big Top:** classic inflatable red, yellow and blue; chunky type and striped banners |
 | `demos/popparty/` | **Pop Party:** purple, hot pink and lime; confetti and balloons |
 | `demos/backyard/` | **Backyard:** sky, sunshine and grass; summer backyard scene |
+| `demos/rentalpro/` | **Rental Pro:** electric blue and orange; laid out like top party-rental sites, with a top bar, availability search, category tiles, trust strip, reviews and service area |
 
-Big Top, Pop Party and Backyard show shiny drawn inflatables on the rental cards until real photos are added. Each card has a comment with the `<img>` tag to swap in.
+Big Top, Pop Party, Backyard and Rental Pro show shiny drawn inflatables on the rental cards until real photos are added. Each card has a comment with the `<img>` tag to swap in.
 
 Each folder is self-contained (its own `css/`, `js/` and `img/`). Once a style is picked, its files can replace the root site.
