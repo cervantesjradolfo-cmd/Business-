@@ -25,7 +25,9 @@ export default function App() {
         <Navbar />
         <main id="main">
           <Hero />
-          <Marquee />
+          <div className="overflow-hidden py-3">
+            <Marquee />
+          </div>
           <Rentals />
           <HowItWorks />
           <Booking />
