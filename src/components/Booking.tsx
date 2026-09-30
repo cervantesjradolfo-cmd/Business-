@@ -80,7 +80,10 @@ export function Booking() {
       estimatedTotal: money(quote.total),
     }
     try {
-      if (business.formEndpoint) {
+      if (import.meta.env.VITE_DEMO) {
+        // Demo build: nothing is sent, just show the success screen
+        await new Promise((r) => setTimeout(r, 900))
+      } else if (business.formEndpoint) {
         const res = await fetch(business.formEndpoint, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Accept: 'application/json' },

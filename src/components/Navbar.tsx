@@ -42,7 +42,10 @@ export function Navbar() {
   }, [])
 
   return (
-    <header className="fixed inset-x-0 top-0 z-40 px-3 pt-3 sm:px-6">
+    <header
+      className="fixed inset-x-0 top-0 z-40 px-3 sm:px-6"
+      style={{ paddingTop: 'calc(0.75rem + env(safe-area-inset-top, 0px))' }}
+    >
       <nav
         aria-label="Main"
         className={`mx-auto flex max-w-6xl items-center justify-between rounded-full px-3 py-2 transition-all duration-300 sm:px-5 ${
