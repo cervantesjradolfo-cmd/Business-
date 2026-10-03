@@ -41,21 +41,28 @@ whose title contains "ship".
 - If the feature needs a secret (API key) or a server, it must degrade gracefully without
   one and the setup must be documented in the README.
 
-## 4. Check it
-Start with what `.pipeline/changes.md` says to focus on. Run whatever the project has, and fix what fails before going on:
+## 4. Test it
+- Hand off to the `tester` subagent (Agent tool, `subagent_type: "tester"`). It writes tests
+  for `.pipeline/changes.md`, runs `npm test`, and reports in `.pipeline/test-results.md`.
+- If the status is FAIL, stop the pipeline: the Tester does not fix code, and neither do
+  you at this point. Report the failures to the user (until a Reviewer stage exists).
+
+## 5. Check it
+Start with what `.pipeline/changes.md` says to focus on. Run whatever else the project has,
+and fix what fails before going on:
 - install (`npm ci`), typecheck, lint (no new warnings in files you touched), build
 - for anything visual, open it in Chromium with Playwright at desktop (1280px) and
   phone (375px) widths, click through the new feature, check for console errors and
   horizontal scroll, and look at the screenshots
 - say plainly what you could not test and why
 
-## 5. Deliver it
-- Commit with a clear message and push to the session's designated branch.
+## 6. Deliver it
+- Commit the code and the Tester's test files with a clear message, and push to the session's designated branch.
 - Do not open a pull request unless the user asks.
 - If a Claude artifact is a published build of this project, rebuild it in the same
   shape it was published (read it first), and republish to the same URL so the user
   can try the change right away.
 
-## 6. Report
+## 7. Report
 A short summary: what was built, where to try it (artifact link), what was tested,
 anything the user must do (API keys, deploy settings), and the branch it is on.

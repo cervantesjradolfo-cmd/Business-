@@ -389,7 +389,7 @@ h1 { margin: 0; font: 700 28px/1 var(--display); letter-spacing: 0.32em; color: 
     }
     return out;
   };
-  const STEPS = ["Plan", "Build", "Check", "Deliver", "Report"];
+  const STEPS = ["Plan", "Build", "Test", "Deliver", "Report"];
   const pipeline = (items, working) => {
     let start = 0; items.forEach((it, i) => { if (it.type === "you") start = i; });
     const turn = items.slice(start);
@@ -897,7 +897,7 @@ Set "focus" when the question is about one agent. Set "draft" only when the user
     "faq-update": [{ id: "f0", at: iso(260), type: "you", text: "/ship refresh the FAQ answers" }, T(250, "Edit", { file_path: "src/data/site.ts" }), T(245, "Bash", { description: "Push the branch", command: "git push" }), { id: "f1", at: iso(240), type: "end", ms: 900000, cost: 0.52 }],
   };
   const SCRIPT = {
-    "party-packages": [["Agent", { subagent_type: "coder", description: "Implement the party packages spec" }], ["Edit", { file_path: "src/App.tsx" }], ["Read", { file_path: ".pipeline/changes.md" }], ["Bash", { description: "Typecheck and build the site", command: "npm run build" }], ["Bash", { description: "Screenshot desktop and phone widths", command: "node playwright-check.mjs" }], ["say", "Build is clean and both widths look right. Committing now."], ["Bash", { description: "Commit and push", command: "git commit -m 'Add party packages' && git push" }], ["Artifact", { action: "publish", file_path: "dist/index.html" }], ["end"]],
+    "party-packages": [["Agent", { subagent_type: "coder", description: "Implement the party packages spec" }], ["Edit", { file_path: "src/App.tsx" }], ["Read", { file_path: ".pipeline/changes.md" }], ["Agent", { subagent_type: "tester", description: "Test the party packages section" }], ["Write", { file_path: "src/components/PartyPackages.test.tsx" }], ["Bash", { description: "Run the tests", command: "npm test" }], ["Read", { file_path: ".pipeline/test-results.md" }], ["Bash", { description: "Typecheck and build the site", command: "npm run build" }], ["Bash", { description: "Screenshot desktop and phone widths", command: "node playwright-check.mjs" }], ["say", "Build is clean and both widths look right. Committing now."], ["Bash", { description: "Commit and push", command: "git commit -m 'Add party packages' && git push" }], ["Artifact", { action: "publish", file_path: "dist/index.html" }], ["end"]],
     "gallery-video": [["Write", { file_path: "src/components/VideoReel.tsx" }], ["Edit", { file_path: "src/components/Gallery.tsx" }], ["Bash", { description: "Run lint", command: "npm run lint" }], ["say", "Reel added with a poster frame so it loads fast on phones."], ["Bash", { description: "Build the site", command: "npm run build" }]],
   };
   function demoEvents(id) { onEvents(id, DEMO_EV[id] || []); }
