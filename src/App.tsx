@@ -1,5 +1,6 @@
 import { MotionConfig } from 'motion/react'
 import { Booking } from './components/Booking'
+import { ChatBot } from './components/ChatBot'
 import { Faq } from './components/Faq'
 import { Footer } from './components/Footer'
 import { Gallery } from './components/Gallery'
@@ -37,6 +38,7 @@ export default function App() {
         </main>
         <Footer />
         <QuoteFab />
+        <ChatBot />
       </QuoteProvider>
     </MotionConfig>
   )

@@ -15,6 +15,8 @@ and styled with the UI/UX Pro Max "claymorphism" design system.
 - **Gallery** with a full-screen lightbox (arrow keys and Esc work)
 - **Swipeable reviews**, **FAQ accordion**, and a footer call-to-action
 - Floating "View quote" button that shows up once something is added
+- **Bounce Bot AI chat assistant** (bottom-left) that answers questions about rentals,
+  prices, space, weather and booking, and can add rentals to the quote in one tap
 
 ## Editing content (no coding needed)
 
@@ -39,6 +41,25 @@ By default, the form opens the visitor's email app with the booking details fill
 To get requests straight to your inbox instead, create a free form at
 [formspree.io](https://formspree.io) and paste the endpoint into `business.formEndpoint`.
 
+### The AI chat assistant (Bounce Bot)
+
+Bounce Bot learns everything from `src/data/site.ts` (rentals, prices, add-ons, FAQ, phone,
+hours), so when you edit that file its answers update too. Its personality and rules are in
+`src/lib/knowledge.ts`.
+
+It answers in one of three ways, picking the first that works:
+
+1. **Claude AI via `/api/chat`** (best). Deploy to [Vercel](https://vercel.com) and add an
+   environment variable `ANTHROPIC_API_KEY` with a key from
+   [console.anthropic.com](https://console.anthropic.com). The function in `api/chat.ts`
+   deploys automatically. Each chat message costs a fraction of a cent.
+2. **Claude in the viewer's own account** when the site is shared as a Claude artifact.
+3. **Offline answers** built from `site.ts`. Used automatically when no AI is available
+   (local `npm run dev`, GitHub Pages, or no API key), so the chat never breaks.
+
+To host the API somewhere else, set `VITE_CHAT_ENDPOINT` to its URL at build time
+(or `off` to always use offline answers).
+
 ## Running it
 
 ```bash
@@ -48,4 +69,4 @@ npm run build    # production files go to /dist
 ```
 
 The `dist/` folder is a static site. You can host it free on Netlify, Vercel, Cloudflare Pages
-or GitHub Pages.
+or GitHub Pages. For the AI chat, use Vercel (see above); other hosts get the offline answers.
