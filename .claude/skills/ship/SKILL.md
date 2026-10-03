@@ -8,6 +8,14 @@ argument-hint: "<what to build or change>"
 
 The user wants the thing in their request built, checked and delivered, not just planned.
 
+## 0. Show up in the Agent View
+The user watches /ship runs live in the Agent View artifact
+(https://claude.ai/artifact/PvgSpsCuhcmTZfCdCjd3Nq, source `agent-view.html` next to this file).
+When the `set_session_tags` tool (claude-code-remote) is available, tag this session `ship`
+first: call `get_session` with no `session_id` to get your id, then `set_session_tags` with
+`add: ["ship"]`. Skip this silently if the tools are missing. The view also picks up sessions
+whose title contains "ship".
+
 ## 1. Find the code
 - Look at the current branch first. If the project the user names (for example a website)
   is not there, check the other remote branches (`git fetch origin` then
@@ -15,28 +23,59 @@ The user wants the thing in their request built, checked and delivered, not just
 - If the work lives on another branch, bring it onto your working branch
   (fast-forward or merge, never a rebase of someone else's branch).
 
-## 2. Build it
-- Match the project's stack, file layout, naming and styling.
-- Keep the change focused on what was asked. Put editable content where the project
-  already keeps it (for example a data file the README points to).
-- If the feature needs a secret (API key) or a server, make it degrade gracefully
-  without one, and document the setup in the README.
+## 2. Plan it
+- Hand the request to the `planner` subagent (Agent tool, `subagent_type: "planner"`),
+  passing the user's request word for word. It writes the spec to `.pipeline/spec.md`.
+- If the spec starts with OPEN QUESTIONs, ask the user before building. Otherwise build
+  exactly what the spec says.
+- Skip this stage for a one-line fix or a pure content edit.
 
-## 3. Check it
-Run whatever the project has, and fix what fails before going on:
-- install (`npm ci`), typecheck, lint (no new warnings in files you touched), build
+## 3. Build it
+- Hand off to the `coder` subagent (Agent tool, `subagent_type: "coder"`). It implements
+  `.pipeline/spec.md` and writes a summary to `.pipeline/changes.md`.
+- If the coder stops on OPEN QUESTIONS, ask the user, then run it again.
+- Read `.pipeline/changes.md`; it tells the Check stage where to focus.
+- For a one-line fix or a pure content edit that skipped planning, make the change yourself,
+  matching the project's stack and styling and keeping editable content where the project
+  keeps it (for example `src/data/site.ts`).
+- If the feature needs a secret (API key) or a server, it must degrade gracefully without
+  one and the setup must be documented in the README.
+
+## 4. Test it
+- Hand off to the `tester` subagent (Agent tool, `subagent_type: "tester"`). It writes tests
+  for `.pipeline/changes.md`, runs `npm test`, and reports in `.pipeline/test-results.md`.
+- Whether it reports PASS or FAIL, go on to Check and Review. Do not fix code here: a
+  failure is for the Reviewer to judge.
+
+## 5. Check it
+Run the project's other checks and record them in `.pipeline/checks.md` (what ran, what
+passed, what failed, what you could not test and why). Do not fix code here either.
+- install (`npm ci`), typecheck (`npx tsc -b`), lint (note any new warnings in touched files), build
 - for anything visual, open it in Chromium with Playwright at desktop (1280px) and
   phone (375px) widths, click through the new feature, check for console errors and
   horizontal scroll, and look at the screenshots
-- say plainly what you could not test and why
 
-## 4. Deliver it
-- Commit with a clear message and push to the session's designated branch.
-- Do not open a pull request unless the user asks.
+## 6. Review it
+- Hand off to the `reviewer` subagent (Agent tool, `subagent_type: "reviewer"`). It reads
+  everything in `.pipeline/`, the diff and the tests, and writes `.pipeline/review.md`,
+  whose first line is the verdict.
+- **VERDICT: SHIP** → go to Deliver.
+- **VERDICT: NEEDS WORK** → run the `coder` again, telling it to fix exactly the Fix list in
+  `.pipeline/review.md` and nothing else, then repeat Test, Check and Review. Do this at
+  most twice; if it still is not SHIP, stop and report.
+- **VERDICT: BLOCK** → stop. Do not commit. Report the Reviewer's findings to the user.
+
+## 7. Deliver it (only after SHIP)
+- Commit the code and the tests with a clear message, and push to the session's
+  designated branch. This is not the release: the user signs off on the branch.
+- Do not open a pull request or merge unless the user asks.
 - If a Claude artifact is a published build of this project, rebuild it in the same
   shape it was published (read it first), and republish to the same URL so the user
   can try the change right away.
 
-## 5. Report
-A short summary: what was built, where to try it (artifact link), what was tested,
-anything the user must do (API keys, deploy settings), and the branch it is on.
+## 8. Report
+A short summary for the user's sign-off: the Reviewer's verdict and notes, what was built,
+where to try it (artifact link), what was tested, how many review rounds it took, anything
+the user must do (API keys, deploy settings), and the branch it is on. When the pipeline
+stopped (OPEN QUESTIONS, BLOCK, or still NEEDS WORK after two rounds), say so first and
+quote what needs the user's decision.

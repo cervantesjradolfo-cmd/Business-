@@ -66,7 +66,10 @@ To host the API somewhere else, set `VITE_CHAT_ENDPOINT` to its URL at build tim
 npm install
 npm run dev      # local preview at http://localhost:5173
 npm run build    # production files go to /dist
+npm test         # run the tests (Vitest + React Testing Library)
 ```
+
+Tests sit next to the code they cover, as `*.test.ts` or `*.test.tsx`.
 
 The `dist/` folder is a static site. You can host it free on Netlify, Vercel, Cloudflare Pages
 or GitHub Pages. For the AI chat, use Vercel (see above); other hosts get the offline answers.
