@@ -384,15 +384,29 @@ h1 { margin: 0; font: 700 28px/1 var(--display); letter-spacing: 0.32em; color: 
   const KINDS = ["assistant", "user", "result", "system"];
   const resultText = (c) => typeof c === "string" ? c : Array.isArray(c) ? c.filter((x) => x.type === "text").map((x) => x.text).join("\n") : "";
   const parseEvents = (raw) => {
-    const out = []; const owners = {};
+    const out = []; const owners = {}; const tasks = {};
+    const BG = /async agent launched|working in the background|running in the background/i;
     for (const ev of raw || []) {
       const kind = KINDS.find((k) => ev && ev[k]); if (!kind) continue;
       const body = ev[kind], inner = body.internal_anthropic_catchall || body;
       const at = ev.created_at || inner.timestamp || "";
       const id = body.uuid || inner.uuid || at + kind;
       if (kind === "result") { out.push({ id, at, type: "end", isError: !!inner.is_error, cost: inner.total_cost_usd, ms: inner.duration_ms }); continue; }
-      if (kind === "system") { const st = inner.subtype || inner.type || ""; if (/fallback|error/i.test(st)) out.push({ id, at, type: "sys", text: st.replace(/_/g, " ") }); continue; }
-      const who = owners[inner.parent_tool_use_id || body.parent_tool_use_id] || null;
+      if (kind === "system") {
+        const st = inner.subtype || inner.type || "";
+        if (inner.task_id && inner.subagent_type) tasks[inner.task_id] = String(inner.subagent_type);
+        if (inner.tool_use_id && inner.subagent_type) owners[inner.tool_use_id] ||= String(inner.subagent_type);
+        if (inner.subagent_type && /^task_/.test(st)) {
+          const crew = String(inner.subagent_type); const status = String(inner.status || "").toLowerCase();
+          if (/notif|complet|finish|end/.test(st) || /^(completed|failed|killed|stopped)$/.test(status))
+            out.push({ id, at, type: "crewdone", crew, toolId: inner.tool_use_id, text: inner.summary || inner.result || inner.description || status || "Finished", isError: /fail|kill|error/.test(status) });
+          else out.push({ id, at, type: "crewprog", crew, toolId: inner.tool_use_id, text: inner.description || "", tool: inner.last_tool_name || "" });
+          continue;
+        }
+        if (/fallback|error/i.test(st)) out.push({ id, at, type: "sys", text: st.replace(/_/g, " ") });
+        continue;
+      }
+      const who = owners[inner.parent_tool_use_id || body.parent_tool_use_id] || (inner.subagent_type ? String(inner.subagent_type) : null);
       let content = (inner.message || {}).content;
       if (typeof content === "string") content = [{ type: "text", text: content }];
       if (!Array.isArray(content)) continue;
@@ -403,10 +417,20 @@ h1 { margin: 0; font: 700 28px/1 var(--display); letter-spacing: 0.32em; color: 
           if (b.name === "Agent" && b.input?.subagent_type) owners[b.id] = String(b.input.subagent_type);
           out.push({ id: bid, at, type: "tool", name: b.name, input: b.input, toolId: b.id, who });
         }
-        else if (kind === "user" && b.type === "tool_result" && owners[b.tool_use_id]) out.push({ id: bid, at, type: "crewdone", crew: owners[b.tool_use_id], toolId: b.tool_use_id, text: resultText(b.content), isError: !!b.is_error });
+        else if (kind === "user" && b.type === "tool_result" && owners[b.tool_use_id]) {
+          const txt = resultText(b.content);
+          if (!b.is_error && BG.test(txt)) out.push({ id: bid, at, type: "crewbg", crew: owners[b.tool_use_id], toolId: b.tool_use_id });
+          else out.push({ id: bid, at, type: "crewdone", crew: owners[b.tool_use_id], toolId: b.tool_use_id, text: txt, isError: !!b.is_error });
+        }
         else if (kind === "user" && b.type === "tool_result" && b.is_error) out.push({ id: bid, at, type: "toolerr", text: resultText(b.content) || "Tool call failed", who });
         else if (kind === "user" && b.type === "text" && b.text && !who && !inner.isSynthetic && !body.isSynthetic) {
           const t = b.text.trim();
+          if (/^<task-notification/i.test(t)) { // a background subagent finished
+            const tag = (n) => (t.match(new RegExp("<" + n + ">([\\s\\S]*?)</" + n + ">")) || [])[1]?.trim() || "";
+            const crew = tasks[tag("task-id")] || owners[tag("tool-use-id")];
+            if (crew) { const status = tag("status").toLowerCase(); out.push({ id: bid, at, type: "crewdone", crew, toolId: tag("tool-use-id"), text: tag("result") || tag("summary") || status || "Finished", isError: /fail|kill|error/.test(status) }); }
+            return;
+          }
           if (!t.startsWith("<")) { out.push({ id: bid, at, type: "you", text: t }); return; }
           const cmd = t.match(/<command-name>\s*([^<]+?)\s*<\/command-name>/);
           if (cmd) {
@@ -444,6 +468,10 @@ h1 { margin: 0; font: 700 28px/1 var(--display); letter-spacing: 0.32em; color: 
     for (const it of items.slice(start)) {
       if (it.type === "tool" && it.name === "Agent" && st[it.input?.subagent_type]) {
         const m = st[it.input.subagent_type]; m.state = "active"; m.runs++; m.since = it.at; m.task = it.input.description || ""; m.out = null;
+      }
+      if (it.type === "crewprog" && st[it.crew]) {
+        const m = st[it.crew]; if (m.state !== "active") { m.state = "active"; m.runs ||= 1; m.since ||= it.at; m.out = null; }
+        m.task = (it.tool ? it.tool + ": " : "") + it.text;
       }
       if (it.type === "crewdone" && st[it.crew]) {
         const m = st[it.crew]; const o = it.isError ? { text: short(it.text || "Failed", 90), tone: "bad" } : outcome(it.crew, it.text);
@@ -625,8 +653,8 @@ h1 { margin: 0; font: 700 28px/1 var(--display); letter-spacing: 0.32em; color: 
         const lx = n.x + (right ? (sel ? 46 : 16) : (sel ? -46 : -16));
         ctx.strokeStyle = "rgba(73,227,255,0.5)"; ctx.beginPath(); ctx.moveTo(n.x + (right ? n.r : -n.r), n.y); ctx.lineTo(lx + (right ? -4 : 4), n.y - 10); ctx.stroke();
         ctx.fillStyle = sel ? "#ffffff" : "#bfeefa"; ctx.fillText(label, lx, n.y - 12);
-        const ac = sel && n.b === "working" ? activeCrew(S.eventsFor === n.s.id ? S.events : []) : null;
-        ctx.fillStyle = c; ctx.font = "11px 'Share Tech Mono', monospace"; ctx.fillText(LABEL[n.b].toUpperCase() + (ac ? " · " + ac.name.toUpperCase() : ""), lx, n.y + 2 - 0);
+        const ac = n.b === "working" ? crewOf(n.s.id) : null;
+        ctx.fillStyle = c; ctx.font = "11px 'Share Tech Mono', monospace"; ctx.fillText(LABEL[n.b].toUpperCase() + (ac ? " · " + ac.toUpperCase() : ""), lx, n.y + 2 - 0);
       }
     }
 
@@ -684,7 +712,7 @@ h1 { margin: 0; font: 700 28px/1 var(--display); letter-spacing: 0.32em; color: 
       const b = bucket(s);
       ul.append(h("li", null, h("button", { class: "agent s-" + b, type: "button", "aria-current": String(s.id === S.selected), onclick: () => select(s.id, true) },
         h("span", { class: "nm" }, s.title || "Untitled"),
-        h("span", { class: "st" }, h("span", null, LABEL[b]), h("span", null, ago(s.updated_at))))));
+        h("span", { class: "st" }, h("span", null, LABEL[b] + (b === "working" && crewOf(s.id) ? " · " + crewOf(s.id) : "")), h("span", null, ago(s.updated_at))))));
     }
   };
 
@@ -744,11 +772,12 @@ h1 { margin: 0; font: 700 28px/1 var(--display); letter-spacing: 0.32em; color: 
     $("feedMeta").textContent = s ? (S.demo ? "demo stream" : S.eventsAt ? "synced " + ago(S.eventsAt) : "syncing…") : "";
     ol.replaceChildren();
     if (!items.length) { ol.append(h("li", { class: "empty", style: "display:block" }, s ? "Waiting for activity…" : "No agent focused.")); return; }
-    for (const it of items.slice().reverse().slice(0, 80)) {
+    for (const it of items.filter((x) => x.type !== "crewprog").reverse().slice(0, 80)) {
       const fresh = !S.seen.has(it.id);
       let k = "", x = "", cls = "";
       const tag = it.who ? crewName(it.who) + " › " : "";
       if (it.type === "tool") { const t = toolLine(it.name, it.input); k = tag + t.nm; x = t.arg; cls = it.name === "Agent" ? "say" : ""; }
+      else if (it.type === "crewbg") { k = "◆ " + crewName(it.crew) + " working"; x = "Running in the background"; cls = "say"; }
       else if (it.type === "crewdone") { const o = it.isError ? { text: "Failed", tone: "bad" } : outcome(it.crew, it.text); k = "◆ " + crewName(it.crew) + " done"; x = o.text; cls = o.tone === "bad" ? "err" : o.tone === "warn" ? "you" : "end"; }
       else if (it.type === "say") { k = it.who ? crewName(it.who) : "Agent"; x = it.text; cls = "say"; }
       else if (it.type === "you") { k = "You"; x = it.text; cls = "you"; }
@@ -796,14 +825,51 @@ h1 { margin: 0; font: 700 28px/1 var(--display); letter-spacing: 0.32em; color: 
         const name = s.title || "An agent";
         if (b === "needs") { toast([h("b", null, "Attention: "), name + " needs you"], COLORS.needs); speak(`${name} needs your attention.`); tone(520, 0.2, 0.06); }
         else if (b === "done") { toast([h("b", null, "Complete: "), name], COLORS.done); speak(`${name} is complete.`); tone(990, 0.15); }
-        else if (b === "working") { toast([h("b", null, "Engaged: "), name + " is working"], COLORS.working); tone(740, 0.1); }
+        else if (b === "working") { toast([h("b", null, "Engaged: "), name + " is working"], COLORS.working); speak(`${name} is working.`); tone(740, 0.1); setTimeout(scanCrew, 500); }
         else if (b === "failed") { toast([h("b", null, "Failure: "), name], COLORS.failed); speak(`Warning. ${name} has failed.`); tone(300, 0.3, 0.06); }
         ripples.push({ k: 0, c: COLORS[b] });
       }
       S.prevBucket.set(s.id, b);
     }
   };
+  S.crewBy = {}; S.greeted = false;
+  function crewOf(id) {
+    if (id === S.eventsFor) { const a = activeCrew(S.events); return a ? a.name : null; }
+    return S.crewBy[id] || null;
+  }
+  let scanning = false;
+  const scanCrew = async () => {
+    if (!S.mcp || scanning || document.hidden) return;
+    scanning = true;
+    try {
+      const others = visible().filter((s) => bucket(s) === "working" && s.id !== S.selected).slice(0, 5);
+      for (const s of others) {
+        try {
+          const res = await S.mcp.callTool(SERVER, "list_events", { session_id: s.id, limit: 60, kinds: ["user", "assistant", "system"] }, { cache: { staleTime: 15000 } });
+          const a = activeCrew(parseEvents(unwrap(res.payload).data));
+          const prev = S.crewBy[s.id]; S.crewBy[s.id] = a ? a.name : null;
+          if (a && prev !== a.name && S.greeted) { toast([h("b", null, a.name + " engaged: "), s.title || "an agent"], COLORS.working); speak(`${a.name} engaged on ${s.title || "an agent"}.`); }
+        } catch (e) { if (isDenial(e)) break; }
+      }
+    } finally { scanning = false; renderRoster(); }
+  };
+  setInterval(scanCrew, 25000);
+  const greet = () => {
+    if (S.greeted || S.demo) return; S.greeted = true;
+    const working = visible().filter((s) => bucket(s) === "working");
+    const needs = visible().filter((s) => bucket(s) === "needs");
+    for (const s of working.slice(0, 3)) toast([h("b", null, "Working now: "), (s.title || "Agent") + (crewOf(s.id) ? " · " + crewOf(s.id) : "")], COLORS.working);
+    for (const s of needs.slice(0, 2)) toast([h("b", null, "Needs you: "), s.title || "Agent"], COLORS.needs);
+    if (working.length || needs.length) { speak(`${working.length} agent${working.length === 1 ? "" : "s"} working${needs.length ? `, ${needs.length} waiting on you` : ""}.`); ripples.push({ k: 0, c: COLORS.working }); }
+    log("arc", working.length ? `${working.length} agent${working.length === 1 ? " is" : "s are"} working: ${working.map((s) => s.title).join(", ")}.` : "No agents are working right now.");
+    scanCrew();
+  };
   const autoPick = () => {
+    if (!S.picked) { // first load: lock onto a working /ship agent if there is one
+      S.picked = true;
+      const w = visible().find((s) => bucket(s) === "working");
+      if (w) { select(w.id, false); return; }
+    }
     if (S.selected && S.sessions.some((s) => s.id === S.selected)) return;
     const list = visible();
     const pick = list.find((s) => bucket(s) === "working") || list.find((s) => bucket(s) === "needs") || list[0] || S.sessions[0];
@@ -812,7 +878,7 @@ h1 { margin: 0; font: 700 28px/1 var(--display); letter-spacing: 0.32em; color: 
   const onSessions = (list, at) => {
     S.sessions = list; S.listAt = at; S.listErr = null;
     if (S.scope === "ship" && !S.sessions.some(isShip) && !store("arc.scope")) S.scope = "all";
-    noticeChanges(); autoPick(); renderAll();
+    noticeChanges(); autoPick(); renderAll(); greet();
   };
   const watchSessions = () => {
     if (S.unwatch) S.unwatch();
@@ -843,7 +909,11 @@ h1 { margin: 0; font: 700 28px/1 var(--display); letter-spacing: 0.32em; color: 
         tone(o.tone === "bad" ? 300 : 990, 0.15); ripples.push({ k: 0, c: col });
       }
     }
-    renderTele(); renderCrew(); renderFeed(); markSeen(); renderTop();
+    if (firstLoad && !S.demo) {
+      const ac = activeCrew(items);
+      if (ac && sess && bucket(sess) === "working") { toast([h("b", null, ac.name + " is working: "), sess.title || "agent"], COLORS.working); speak(`${ac.name} is working on ${sess.title || "your agent"}.`); }
+    }
+    renderTele(); renderCrew(); renderFeed(); markSeen(); renderTop(); renderRoster();
   };
   let gen = 0;
   const pollEvents = async (fresh) => {
