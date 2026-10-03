@@ -8,6 +8,14 @@ argument-hint: "<what to build or change>"
 
 The user wants the thing in their request built, checked and delivered, not just planned.
 
+## 0. Show up in the Agent View
+The user watches /ship runs live in the Agent View artifact
+(https://claude.ai/artifact/PvgSpsCuhcmTZfCdCjd3Nq, source `agent-view.html` next to this file).
+When the `set_session_tags` tool (claude-code-remote) is available, tag this session `ship`
+first: call `get_session` with no `session_id` to get your id, then `set_session_tags` with
+`add: ["ship"]`. Skip this silently if the tools are missing. The view also picks up sessions
+whose title contains "ship".
+
 ## 1. Find the code
 - Look at the current branch first. If the project the user names (for example a website)
   is not there, check the other remote branches (`git fetch origin` then

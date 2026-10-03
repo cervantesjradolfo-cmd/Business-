@@ -1,0 +1,706 @@
+<title>Ship Agent View</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: a control-room board. Summary strip on top, session list on the left,
+   the selected agent's /ship pipeline and live activity log on the right. */
+:root {
+  --bg: #f3f5f8;
+  --panel: #ffffff;
+  --sunk: #e9edf3;
+  --line: #d6dce6;
+  --fg: #16202e;
+  --muted: #5b6779;
+  --accent: #1f5fd1;
+  --accent-soft: #e2ebfb;
+  --ok: #17845a;
+  --ok-soft: #dcf2e8;
+  --warn: #b36a00;
+  --warn-soft: #fbeed6;
+  --bad: #c43a3a;
+  --bad-soft: #f9e0e0;
+  --live: #1f5fd1;
+  --display: "Bricolage Grotesque", "Avenir Next", "Segoe UI", system-ui, sans-serif;
+  --body: "Instrument Sans", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  --r: 10px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0e131b; --panel: #161d28; --sunk: #1d2633; --line: #2a3546;
+    --fg: #e6ebf3; --muted: #95a1b3; --accent: #6d9cff; --accent-soft: #1c2b47;
+    --ok: #4cc795; --ok-soft: #15332a; --warn: #f0b04a; --warn-soft: #3a2c12;
+    --bad: #f07a7a; --bad-soft: #3d1c1f; --live: #6d9cff; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0e131b; --panel: #161d28; --sunk: #1d2633; --line: #2a3546;
+  --fg: #e6ebf3; --muted: #95a1b3; --accent: #6d9cff; --accent-soft: #1c2b47;
+  --ok: #4cc795; --ok-soft: #15332a; --warn: #f0b04a; --warn-soft: #3a2c12;
+  --bad: #f07a7a; --bad-soft: #3d1c1f; --live: #6d9cff; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--fg); font: 15px/1.5 var(--body); }
+.wrap { max-width: 1240px; margin: 0 auto; padding-inline: 16px; padding-block: 20px 40px; display: grid; gap: 18px; }
+button { font: inherit; color: inherit; }
+button:focus-visible, a:focus-visible, .card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+a { color: var(--accent); }
+
+header.top { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 12px; }
+h1 { font: 800 clamp(26px, 4vw, 36px)/1.05 var(--display); margin: 0; letter-spacing: -0.01em; text-wrap: balance; }
+h1 .slash { color: var(--accent); font-family: var(--mono); font-weight: 600; font-size: 0.8em; margin-right: 2px; }
+.sub { color: var(--muted); margin: 4px 0 0; max-width: 60ch; }
+.conn { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 13px; color: var(--muted); }
+.btn { border: 1px solid var(--line); background: var(--panel); border-radius: 8px; padding: 6px 12px; cursor: pointer; font-weight: 500; }
+.btn:hover { border-color: var(--accent); }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); display: inline-block; flex: none; }
+.dot.on { background: var(--ok); box-shadow: 0 0 0 0 var(--ok); animation: ping 2s infinite; }
+
+.banner { border-radius: var(--r); padding: 12px 14px; background: var(--warn-soft); color: var(--fg); border: 1px solid var(--line); }
+.banner b { color: var(--warn); }
+
+.summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.stat { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); padding: 12px 14px; text-align: left; cursor: pointer; display: grid; gap: 2px; }
+.stat[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); }
+.stat .n { font: 800 28px/1 var(--display); font-variant-numeric: tabular-nums; }
+.stat .l { font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); font-weight: 600; }
+.stat.working .n { color: var(--live); }
+.stat.needs .n { color: var(--warn); }
+.stat.done .n { color: var(--ok); }
+
+.toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--panel); }
+.seg button { border: 0; background: none; padding: 6px 12px; cursor: pointer; font-size: 14px; }
+.seg button[aria-pressed="true"] { background: var(--accent); color: var(--panel); font-weight: 600; }
+.toolbar .hint { color: var(--muted); font-size: 13px; }
+
+.board { display: grid; grid-template-columns: minmax(0, 380px) minmax(0, 1fr); gap: 16px; align-items: start; }
+.list { display: grid; gap: 8px; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); padding: 12px 14px; cursor: pointer; display: grid; gap: 6px; text-align: left; width: 100%; }
+.card:hover { border-color: var(--accent); }
+.card[aria-current="true"] { border-color: var(--accent); box-shadow: inset 3px 0 0 var(--accent); }
+.card .row { display: flex; gap: 8px; align-items: center; justify-content: space-between; min-width: 0; }
+.card .t { font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.card .meta { font: 12px/1.4 var(--mono); color: var(--muted); display: flex; flex-wrap: wrap; gap: 4px 10px; min-width: 0; }
+.card .meta span { min-width: 0; overflow-wrap: anywhere; }
+.card .note { font-size: 13px; color: var(--muted); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.card .note.need { color: var(--fg); }
+.card .note.need::before { content: "Needs you: "; color: var(--warn); font-weight: 600; }
+.ctx { height: 4px; background: var(--sunk); border-radius: 2px; overflow: hidden; }
+.ctx i { display: block; height: 100%; background: var(--accent); }
+
+.pill { display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; padding: 2px 9px; font-size: 12px; font-weight: 600; white-space: nowrap; flex: none; }
+.pill.working { background: var(--accent-soft); color: var(--live); }
+.pill.working .dot { background: var(--live); animation: ping-live 1.6s infinite; }
+.pill.needs { background: var(--warn-soft); color: var(--warn); }
+.pill.needs .dot { background: var(--warn); }
+.pill.done { background: var(--ok-soft); color: var(--ok); }
+.pill.done .dot { background: var(--ok); }
+.pill.failed { background: var(--bad-soft); color: var(--bad); }
+.pill.failed .dot { background: var(--bad); }
+.pill.other { background: var(--sunk); color: var(--muted); }
+
+.detail { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); padding: 16px; display: grid; gap: 16px; min-width: 0; }
+.detail h2 { font: 700 22px/1.2 var(--display); margin: 0; text-wrap: balance; overflow-wrap: anywhere; }
+.dhead { display: grid; gap: 6px; }
+.dhead .row { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; font-size: 13px; color: var(--muted); }
+.dhead code { font-family: var(--mono); font-size: 12px; background: var(--sunk); padding: 1px 6px; border-radius: 5px; color: var(--fg); overflow-wrap: anywhere; }
+.label { font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); font-weight: 600; margin: 0 0 8px; }
+
+.pipe { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }
+.pipe li { border-top: 4px solid var(--sunk); padding-top: 8px; display: grid; gap: 2px; min-width: 0; }
+.pipe .k { font: 600 11px/1 var(--mono); color: var(--muted); }
+.pipe .n { font-weight: 600; font-size: 14px; }
+.pipe .d { font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
+.pipe li.done { border-color: var(--ok); }
+.pipe li.active { border-color: var(--live); }
+.pipe li.active .n { color: var(--live); }
+.pipe li.active .k::after { content: " · now"; color: var(--live); }
+
+.feed { list-style: none; margin: 0; padding: 0; display: grid; gap: 0; max-height: 640px; overflow-y: auto; border: 1px solid var(--line); border-radius: 8px; }
+.feed li { display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 10px; padding: 9px 12px; border-bottom: 1px solid var(--line); }
+.feed li:last-child { border-bottom: 0; }
+.feed .when { font: 12px/1.6 var(--mono); color: var(--muted); font-variant-numeric: tabular-nums; }
+.feed .what { min-width: 0; display: grid; gap: 2px; }
+.feed .tool { font: 600 12px/1.5 var(--mono); color: var(--accent); }
+.feed .tool.err { color: var(--bad); }
+.feed .txt { font-size: 14px; overflow-wrap: anywhere; white-space: pre-wrap; }
+.feed .txt.clamp { display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; cursor: pointer; }
+.feed .arg { font: 12px/1.5 var(--mono); color: var(--muted); overflow-wrap: anywhere; }
+.feed li.say { background: var(--sunk); }
+.feed li.you .tool { color: var(--warn); }
+.feed li.end .tool { color: var(--ok); }
+.empty { color: var(--muted); padding: 24px 12px; text-align: center; }
+.foot { font-size: 12px; color: var(--muted); display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.err-box { border-radius: 8px; padding: 10px 12px; background: var(--bad-soft); color: var(--fg); font-size: 14px; }
+.sample-tag { font: 600 11px/1 var(--mono); color: var(--warn); background: var(--warn-soft); padding: 3px 6px; border-radius: 4px; }
+
+@keyframes ping { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--ok) 60%, transparent); } 100% { box-shadow: 0 0 0 8px transparent; } }
+@keyframes ping-live { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
+@media (prefers-reduced-motion: reduce) { .dot.on, .pill.working .dot { animation: none; } }
+
+@media (max-width: 860px) {
+  .board { grid-template-columns: minmax(0, 1fr); }
+  .summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .pipe { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+  .pipe .d { display: none; }
+  .pipe .n { font-size: 12px; line-height: 1.3; }
+  .pipe li.active .k::after { content: ""; }
+  .feed li { grid-template-columns: 52px minmax(0, 1fr); }
+}
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div>
+      <h1><span class="slash">/</span>ship Agent View</h1>
+      <p class="sub">Watch your Claude Code agents build, check and deliver changes as they work.</p>
+    </div>
+    <div class="conn">
+      <span class="dot" id="connDot"></span>
+      <span id="connText">Connecting to your sessions…</span>
+      <button class="btn" id="refresh" type="button">Refresh</button>
+    </div>
+  </header>
+
+  <div class="banner" id="banner" hidden></div>
+
+  <section class="summary" aria-label="Agents by status">
+    <button class="stat working" type="button" data-f="working" id="s-working"><span class="n">0</span><span class="l">Working now</span></button>
+    <button class="stat needs" type="button" data-f="needs" id="s-needs"><span class="n">0</span><span class="l">Needs you</span></button>
+    <button class="stat done" type="button" data-f="done" id="s-done"><span class="n">0</span><span class="l">Done</span></button>
+    <button class="stat" type="button" data-f="all" id="s-all"><span class="n">0</span><span class="l">All shown</span></button>
+  </section>
+
+  <div class="toolbar">
+    <div class="seg" role="group" aria-label="Which sessions">
+      <button type="button" id="scopeShip" aria-pressed="true">/ship sessions</button>
+      <button type="button" id="scopeAll" aria-pressed="false">All sessions</button>
+    </div>
+    <span class="hint" id="scopeHint"></span>
+  </div>
+
+  <div class="board">
+    <div class="list" id="list" aria-label="Sessions"></div>
+    <section class="detail" id="detail" aria-live="polite"></section>
+  </div>
+</div>
+
+<script>
+(() => {
+  const SERVER = "Claude Code Remote";
+  const LIST_MS = 30000;      // session list refresh (watchTool floor is ~30 s)
+  const LIVE_MS = 8000;       // activity refresh while the agent is working
+  const IDLE_MS = 45000;      // activity refresh while it is idle
+
+  const $ = (id) => document.getElementById(id);
+  const h = (tag, attrs, ...kids) => {
+    const el = document.createElement(tag);
+    for (const [k, v] of Object.entries(attrs || {})) {
+      if (v == null || v === false) continue;
+      if (k === "class") el.className = v;
+      else if (k.startsWith("on")) el.addEventListener(k.slice(2), v);
+      else el.setAttribute(k, v === true ? "" : v);
+    }
+    for (const kid of kids.flat()) if (kid != null && kid !== false) el.append(kid);
+    return el;
+  };
+
+  const store = (k, v) => { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch { return null; } };
+
+  const state = {
+    mcp: null, sample: false,
+    sessions: [], listAt: null, listErr: null,
+    scope: store("av.scope") || "ship",
+    filter: "all",
+    selected: store("av.sel") || null,
+    events: [], eventsFor: null, eventsAt: null, eventsErr: null,
+    timer: null, unwatch: null,
+  };
+
+  /* ---------- data helpers ---------- */
+  const unwrap = (p) => {
+    if (!p || typeof p !== "object") return { data: [] };
+    if (p.ccr) return p.ccr;
+    return p;
+  };
+  const bucket = (s) => {
+    const b = String(s.status_bucket || "").replace("SESSION_STATUS_BUCKET_", "").toLowerCase();
+    if (b === "working") return "working";
+    if (b === "blocked" || b === "review_ready") return "needs";
+    if (b === "completed") return "done";
+    if (b === "failed") return "failed";
+    if (String(s.session_status || "").includes("RUNNING")) return "working";
+    return "other";
+  };
+  const bucketLabel = { working: "Working", needs: "Needs you", done: "Done", failed: "Failed", other: "Idle" };
+  const isShip = (s) => (s.tags || []).includes("ship") || /(^|\W)\/?ship(\W|$)/i.test(s.title || "");
+  const summary = (s) => s.post_turn_summary || s.external_metadata?.post_turn_summary || {};
+  const branch = (s) => {
+    const cur = s.external_metadata?.current_branches;
+    if (cur) { const v = Object.values(cur)[0]; if (v) return v; }
+    return s.session_context?.outcomes?.[0]?.git_repository?.git_info?.branches?.[0] || "";
+  };
+  const repo = (s) => {
+    const r = s.session_context?.outcomes?.[0]?.git_repository?.git_info?.repo;
+    if (r) return r;
+    const u = s.session_context?.sources?.[0]?.git_repository?.url || "";
+    return u.replace(/^https:\/\/github\.com\//, "");
+  };
+  const artifacts = (s) => s.external_metadata?.artifacts || [];
+  const ago = (iso) => {
+    if (!iso) return "";
+    const t = typeof iso === "number" ? iso : Date.parse(iso);
+    const s = Math.max(0, Math.round((Date.now() - t) / 1000));
+    if (s < 60) return s + "s ago";
+    if (s < 3600) return Math.round(s / 60) + "m ago";
+    if (s < 86400) return Math.round(s / 3600) + "h ago";
+    return Math.round(s / 86400) + "d ago";
+  };
+  const clock = (iso) => {
+    const d = new Date(iso);
+    if (isNaN(d)) return "";
+    return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  };
+  const usd = (n) => (typeof n === "number" ? "$" + n.toFixed(2) : "");
+  const base = (p) => String(p || "").split("/").pop();
+
+  /* ---------- error copy, per code ---------- */
+  const errCopy = (e) => {
+    const c = e?.code || "upstream_error";
+    switch (c) {
+      case "needs_reauth": return "Your Claude Code connection has expired. Reconnect Claude Code Remote in claude.ai Settings → Connectors, then press Refresh.";
+      case "server_not_connected":
+      case "selection_required":
+      case "server_not_found": return "Claude Code Remote is not connected for your account. Add it in claude.ai Settings → Connectors, then press Refresh.";
+      case "not_in_manifest":
+      case "consent_required": return "This page is not allowed to read your sessions. Allow Claude Code Remote in the artifact's Permissions menu, then press Refresh.";
+      case "blocked_by_policy":
+      case "approval_required": return "Your organization's policy blocks this page from reading sessions.";
+      case "server_unavailable":
+      case "rate_limited": return "Claude Code is not answering right now. The page will try again shortly.";
+      case "tool_error": return "Claude Code could not return this data: " + (e.message || "unknown error");
+      default: return "Could not load sessions (" + c + "). Press Refresh to try again.";
+    }
+  };
+  const isDenial = (e) => ["needs_reauth", "server_not_connected", "blocked_by_policy", "approval_required", "not_in_manifest", "consent_required", "selection_required", "server_not_found"].includes(e?.code);
+
+  /* ---------- event parsing ---------- */
+  const KINDS = ["assistant", "user", "result", "system"];
+  const toolLine = (name, input) => {
+    input = input || {};
+    const short = (s, n = 140) => { s = String(s ?? ""); return s.length > n ? s.slice(0, n - 1) + "…" : s; };
+    let nm = name || "tool";
+    const m = nm.match(/^mcp__(.+?)__(.+)$/);
+    if (m) nm = m[2];
+    let arg = "";
+    switch (name) {
+      case "Bash": arg = input.description || short(input.command); break;
+      case "Read": case "Edit": case "Write": case "NotebookEdit": arg = base(input.file_path || input.notebook_path); break;
+      case "Grep": arg = short(input.pattern, 80) + (input.path ? "  in " + base(input.path) : ""); break;
+      case "Glob": arg = input.pattern; break;
+      case "Skill": arg = "/" + (input.skill || ""); break;
+      case "Agent": arg = input.description || ""; break;
+      case "Artifact": arg = (input.action || "publish") + (input.file_path ? " " + base(input.file_path) : input.url ? " " + input.url : ""); break;
+      case "WebFetch": arg = input.url; break;
+      case "WebSearch": arg = input.query; break;
+      default: {
+        const first = Object.values(input).find((v) => typeof v === "string");
+        arg = first ? short(first, 100) : "";
+      }
+    }
+    return { nm, arg: short(arg, 160) };
+  };
+
+  // Which /ship step a tool call belongs to.
+  const stepOf = (name, input) => {
+    input = input || {};
+    const cmd = String(input.command || "");
+    if (name === "Bash") {
+      if (/git push/.test(cmd)) return 3;
+      if (/git commit/.test(cmd)) return 3;
+      if (/(npm|pnpm|yarn) (ci|install|run (build|lint|typecheck|test)|test)|tsc\b|oxlint|eslint|playwright|vitest|jest|pytest|chromium/.test(cmd)) return 2;
+      if (/git (fetch|ls-tree|log|branch|status|merge)|ls\b|cat\b|find\b|grep\b/.test(cmd)) return 0;
+      return null;
+    }
+    if (["Read", "Grep", "Glob"].includes(name)) return 0;
+    if (["Edit", "Write", "NotebookEdit"].includes(name)) return 1;
+    if (name === "Artifact") {
+      const a = input.action || "publish";
+      if (a === "publish") return 3;
+      if (a === "list" || a === "read") return 0;
+      return null;
+    }
+    return null;
+  };
+
+  const parseEvents = (raw) => {
+    const out = [];
+    for (const ev of raw || []) {
+      const kind = KINDS.find((k) => ev && ev[k]);
+      if (!kind) continue;
+      const body = ev[kind];
+      const inner = body.internal_anthropic_catchall || body;
+      const at = ev.created_at || inner.timestamp || "";
+      const id = body.uuid || inner.uuid || at + kind;
+      if (kind === "result") {
+        out.push({ id, at, type: "end", isError: !!inner.is_error, text: String(inner.result || ""), cost: inner.total_cost_usd, ms: inner.duration_ms });
+        continue;
+      }
+      if (kind === "system") {
+        const st = inner.subtype || inner.type || "";
+        if (/fallback|error/i.test(st)) out.push({ id, at, type: "sys", text: st.replace(/_/g, " ") });
+        continue;
+      }
+      const msg = inner.message || {};
+      let content = msg.content;
+      if (typeof content === "string") content = [{ type: "text", text: content }];
+      if (!Array.isArray(content)) continue;
+      content.forEach((b, i) => {
+        const bid = id + ":" + i;
+        if (kind === "assistant" && b.type === "text" && b.text?.trim()) out.push({ id: bid, at, type: "say", text: b.text.trim() });
+        else if (kind === "assistant" && b.type === "tool_use") out.push({ id: bid, at, type: "tool", name: b.name, input: b.input });
+        else if (kind === "user" && b.type === "tool_result" && b.is_error) out.push({ id: bid, at, type: "toolerr", text: typeof b.content === "string" ? b.content : "Tool call failed" });
+        else if (kind === "user" && b.type === "text" && b.text && !inner.isSynthetic && !body.isSynthetic) {
+          const t = b.text.trim();
+          if (!t.startsWith("<")) { out.push({ id: bid, at, type: "you", text: t }); return; }
+          // A slash command such as "/ship add a gallery" arrives wrapped in command tags.
+          const cmd = t.match(/<command-name>\s*([^<]+?)\s*<\/command-name>/);
+          if (cmd) {
+            const args = t.match(/<command-args>([\s\S]*?)<\/command-args>/);
+            const name = cmd[1].startsWith("/") ? cmd[1] : "/" + cmd[1];
+            out.push({ id: bid, at, type: "you", text: (name + " " + (args ? args[1].trim() : "")).trim() });
+          }
+        }
+      });
+    }
+    return out;
+  };
+
+  const STEPS = [
+    { k: "1", n: "Find the code", d: "Branches, files, artifacts" },
+    { k: "2", n: "Build it", d: "Edits and new files" },
+    { k: "3", n: "Check it", d: "Build, lint, browser run" },
+    { k: "4", n: "Deliver it", d: "Commit, push, republish" },
+    { k: "5", n: "Report", d: "Summary for you" },
+  ];
+  const pipeline = (items, working) => {
+    // Only look at the latest turn: everything after the last message you sent.
+    let start = 0;
+    items.forEach((it, i) => { if (it.type === "you") start = i; });
+    const turn = items.slice(start);
+    const reached = [false, false, false, false, false];
+    const lastArg = ["", "", "", "", ""];
+    let latest = -1, delivered = false;
+    for (const it of turn) {
+      if (it.type === "tool") {
+        const s = stepOf(it.name, it.input);
+        if (s == null) continue;
+        reached[s] = true; latest = Math.max(latest, s);
+        lastArg[s] = toolLine(it.name, it.input).arg;
+        if (s === 3) delivered = true;
+      }
+      if (it.type === "end" && delivered) { reached[4] = true; latest = 4; }
+    }
+    const active = working ? Math.max(latest, 0) : -1;
+    return STEPS.map((s, i) => ({ ...s, done: reached[i] && i !== active, active: i === active, last: lastArg[i] }));
+  };
+
+  /* ---------- rendering ---------- */
+  const visible = () => {
+    let list = state.sessions;
+    if (state.scope === "ship") list = list.filter(isShip);
+    return list;
+  };
+
+  const renderSummary = () => {
+    const list = visible();
+    const count = (b) => list.filter((s) => bucket(s) === b).length;
+    $("s-working").querySelector(".n").textContent = count("working");
+    $("s-needs").querySelector(".n").textContent = count("needs");
+    $("s-done").querySelector(".n").textContent = count("done");
+    $("s-all").querySelector(".n").textContent = list.length;
+    for (const id of ["s-working", "s-needs", "s-done", "s-all"]) $(id).setAttribute("aria-pressed", String($(id).dataset.f === state.filter));
+    $("scopeShip").setAttribute("aria-pressed", String(state.scope === "ship"));
+    $("scopeAll").setAttribute("aria-pressed", String(state.scope === "all"));
+    const shipCount = state.sessions.filter(isShip).length;
+    $("scopeHint").textContent = state.scope === "ship"
+      ? (shipCount ? `${shipCount} of your ${state.sessions.length} recent sessions ran /ship` : "No /ship sessions in your recent sessions yet")
+      : `${state.sessions.length} recent sessions`;
+  };
+
+  const pill = (b) => h("span", { class: "pill " + b }, h("span", { class: "dot" }), bucketLabel[b]);
+
+  const renderList = () => {
+    const root = $("list");
+    root.replaceChildren();
+    let list = visible();
+    if (state.filter !== "all") list = list.filter((s) => bucket(s) === state.filter);
+    if (!state.sessions.length && !state.listErr && !state.sample) {
+      root.append(h("div", { class: "card empty" }, "Loading your sessions…"));
+      return;
+    }
+    if (!list.length) {
+      const msg = state.scope === "ship" && state.filter === "all"
+        ? "No /ship sessions yet. Start one with /ship and a request, or switch to All sessions."
+        : "No sessions match this filter.";
+      root.append(h("div", { class: "card empty" }, msg));
+      return;
+    }
+    for (const s of list) {
+      const b = bucket(s);
+      const sm = summary(s);
+      const used = s.external_metadata?.context_usage;
+      const pct = used?.max_tokens ? Math.min(100, Math.round((used.used_tokens / used.max_tokens) * 100)) : null;
+      const note = sm.needs_action ? h("div", { class: "note need" }, sm.needs_action)
+        : (sm.status_detail || sm.recent_action) ? h("div", { class: "note" }, sm.status_detail || sm.recent_action) : null;
+      root.append(h("button", {
+        class: "card", type: "button", "aria-current": String(s.id === state.selected),
+        onclick: () => select(s.id, true),
+      },
+        h("div", { class: "row" }, h("span", { class: "t" }, s.title || "Untitled session"), pill(b)),
+        h("div", { class: "meta" },
+          branch(s) ? h("span", null, "⎇ " + branch(s)) : null,
+          h("span", null, ago(s.updated_at)),
+          s.external_metadata?.usage?.cost_usd != null ? h("span", null, usd(s.external_metadata.usage.cost_usd)) : null,
+          state.sample ? h("span", { class: "sample-tag" }, "EXAMPLE") : null),
+        note,
+        pct != null ? h("div", { class: "ctx", title: `Context used: ${pct}%` }, h("i", { style: `width:${pct}%` })) : null,
+      ));
+    }
+  };
+
+  const renderDetail = () => {
+    const root = $("detail");
+    root.replaceChildren();
+    const s = state.sessions.find((x) => x.id === state.selected);
+    if (!s) {
+      root.append(h("div", { class: "empty" }, state.sessions.length ? "Pick a session to watch its agent live." : "Your agents will show up here."));
+      return;
+    }
+    const b = bucket(s);
+    const items = state.eventsFor === s.id ? state.events : [];
+    const sm = summary(s);
+
+    const link = state.sample ? null : h("a", { href: "https://claude.ai/code/" + s.id, target: "_blank", rel: "noopener" }, "Open in Claude ↗");
+    root.append(h("div", { class: "dhead" },
+      h("div", { class: "row" }, pill(b), repo(s) ? h("code", null, repo(s)) : null, branch(s) ? h("code", null, "⎇ " + branch(s)) : null, link),
+      h("h2", null, s.title || "Untitled session"),
+      sm.needs_action ? h("div", { class: "banner" }, h("b", null, "Needs you: "), sm.needs_action) : null,
+    ));
+
+    // Pipeline
+    const steps = pipeline(items, b === "working");
+    root.append(h("div", null,
+      h("p", { class: "label" }, "/ship progress, latest request"),
+      h("ol", { class: "pipe" }, steps.map((st) => h("li", { class: st.active ? "active" : st.done ? "done" : "" },
+        h("span", { class: "k" }, "STEP " + st.k),
+        h("span", { class: "n" }, st.n),
+        h("span", { class: "d" }, st.last || st.d))))));
+
+    // Artifacts
+    const arts = artifacts(s);
+    if (arts.length) {
+      const seen = new Set();
+      root.append(h("div", null, h("p", { class: "label" }, "Published artifacts"),
+        h("div", { class: "meta", style: "display:flex;flex-wrap:wrap;gap:8px" },
+          arts.filter((a) => !seen.has(a.url) && seen.add(a.url)).slice(-4).map((a) =>
+            h("a", { class: "btn", href: a.url, target: "_blank", rel: "noopener" }, (a.title || "Artifact") + " ↗")))));
+    }
+
+    // Feed
+    const feed = h("ol", { class: "feed" });
+    if (state.eventsErr && state.eventsFor === s.id) root.append(h("div", { class: "err-box" }, errCopy(state.eventsErr)));
+    if (!items.length) {
+      feed.append(h("li", { class: "empty", style: "display:block" }, state.eventsFor === s.id ? "No activity in the latest events." : "Loading activity…"));
+    }
+    for (const it of items.slice().reverse()) {
+      let row;
+      if (it.type === "tool") {
+        const t = toolLine(it.name, it.input);
+        row = h("li", null, h("span", { class: "when" }, clock(it.at)), h("div", { class: "what" }, h("span", { class: "tool" }, t.nm), t.arg ? h("span", { class: "arg" }, t.arg) : null));
+      } else if (it.type === "say") {
+        const txt = h("span", { class: "txt clamp", title: "Show all", onclick: (e) => e.currentTarget.classList.toggle("clamp") }, it.text);
+        row = h("li", { class: "say" }, h("span", { class: "when" }, clock(it.at)), h("div", { class: "what" }, h("span", { class: "tool" }, "Claude"), txt));
+      } else if (it.type === "you") {
+        const txt = h("span", { class: "txt clamp", onclick: (e) => e.currentTarget.classList.toggle("clamp") }, it.text);
+        row = h("li", { class: "you" }, h("span", { class: "when" }, clock(it.at)), h("div", { class: "what" }, h("span", { class: "tool" }, "You asked"), txt));
+      } else if (it.type === "end") {
+        const bits = ["Turn finished"]; if (it.ms) bits.push(Math.round(it.ms / 1000) + "s"); if (it.cost != null) bits.push(usd(it.cost) + " so far");
+        row = h("li", { class: "end" }, h("span", { class: "when" }, clock(it.at)), h("div", { class: "what" }, h("span", { class: "tool" + (it.isError ? " err" : "") }, it.isError ? "Turn failed" : bits.join(" · "))));
+      } else if (it.type === "toolerr") {
+        row = h("li", null, h("span", { class: "when" }, clock(it.at)), h("div", { class: "what" }, h("span", { class: "tool err" }, "Tool error"), h("span", { class: "arg" }, it.text.slice(0, 200))));
+      } else {
+        row = h("li", null, h("span", { class: "when" }, clock(it.at)), h("div", { class: "what" }, h("span", { class: "arg" }, it.text)));
+      }
+      feed.append(row);
+    }
+    root.append(h("div", null, h("p", { class: "label" }, "Live activity, newest first"), feed));
+
+    const every = b === "working" ? `every ${LIVE_MS / 1000}s` : `every ${IDLE_MS / 1000}s`;
+    root.append(h("div", { class: "foot" },
+      h("span", null, state.sample ? "Example data. Open this page in claude.ai to see your own agents." : (state.eventsAt ? "Activity updated " + ago(state.eventsAt) : "")),
+      h("span", null, state.sample ? "" : "Refreshing " + every)));
+  };
+
+  const renderConn = () => {
+    const dot = $("connDot"), txt = $("connText");
+    if (state.sample) { dot.className = "dot"; txt.textContent = "Showing example agents"; return; }
+    if (state.listErr && !state.sessions.length) { dot.className = "dot"; txt.textContent = "Not connected"; return; }
+    if (state.listAt) { dot.className = "dot on"; txt.textContent = "Live · sessions updated " + ago(state.listAt); return; }
+    dot.className = "dot"; txt.textContent = "Connecting to your sessions…";
+  };
+
+  const renderBanner = () => {
+    const el = $("banner");
+    if (state.listErr) { el.hidden = false; el.replaceChildren(h("b", null, "Sessions: "), errCopy(state.listErr)); }
+    else if (state.sample) { el.hidden = false; el.replaceChildren(h("b", null, "Example view. "), "This page reads your sessions through the Claude Code Remote connector, which isn't available here. Open it from claude.ai while signed in to see your real agents."); }
+    else el.hidden = true;
+  };
+
+  const render = () => { renderConn(); renderBanner(); renderSummary(); renderList(); renderDetail(); };
+
+  /* ---------- live data ---------- */
+  const autoPick = () => {
+    const list = visible();
+    if (state.selected && state.sessions.some((s) => s.id === state.selected)) return;
+    const pick = list.find((s) => bucket(s) === "working") || list[0] || state.sessions[0];
+    if (pick) select(pick.id, false);
+  };
+
+  const watchSessions = () => {
+    if (state.unwatch) state.unwatch();
+    state.unwatch = state.mcp.watchTool(SERVER, "list_sessions", { limit: 40 }, (ev) => {
+      if (ev.type === "data") {
+        const p = unwrap(ev.result.payload);
+        state.sessions = Array.isArray(p.data) ? p.data : [];
+        state.listAt = ev.result.cache?.storedAt || Date.now();
+        state.listErr = null;
+        if (state.scope === "ship" && !state.sessions.some(isShip) && !store("av.scope")) state.scope = "all";
+        autoPick();
+      } else {
+        state.listErr = ev.error;
+        if (isDenial(ev.error)) state.sessions = [];
+      }
+      render();
+    }, { refetchInterval: LIST_MS, cache: { staleTime: 10000 } });
+  };
+
+  let pollGen = 0;
+  const pollEvents = async (fresh) => {
+    clearTimeout(state.timer);
+    const id = state.selected;
+    if (!id || !state.mcp) return;
+    const gen = ++pollGen;
+    try {
+      const res = await state.mcp.callTool(SERVER, "list_events",
+        { session_id: id, limit: 100, kinds: ["user", "assistant", "result", "system"] },
+        { cache: { staleTime: fresh ? 0 : 4000, refresh: !!fresh } });
+      if (gen !== pollGen) return;
+      const p = unwrap(res.payload);
+      state.events = parseEvents(p.data);
+      state.eventsFor = id; state.eventsAt = res.cache?.storedAt || Date.now(); state.eventsErr = null;
+    } catch (e) {
+      if (gen !== pollGen) return;
+      state.eventsErr = e; state.eventsFor = id;
+      if (isDenial(e)) state.events = [];
+    }
+    renderDetail(); renderConn();
+    const s = state.sessions.find((x) => x.id === id);
+    let wait = s && bucket(s) === "working" ? LIVE_MS : IDLE_MS;
+    if (state.eventsErr?.retryAfterMs) wait = Math.max(wait, state.eventsErr.retryAfterMs);
+    if (state.eventsErr && !state.eventsErr.retryable && state.eventsErr.code !== "tool_error") return; // needs viewer action
+    state.timer = setTimeout(() => { if (document.hidden) return; pollEvents(false); }, wait + Math.random() * 1500);
+  };
+
+  function select(id, user) {
+    if (state.selected !== id) { state.events = []; state.eventsFor = null; state.eventsErr = null; }
+    state.selected = id;
+    if (user) store("av.sel", id);
+    render();
+    if (state.sample) { loadSampleEvents(id); return; }
+    pollEvents(false);
+    if (user && matchMedia("(max-width: 860px)").matches) $("detail").scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  document.addEventListener("visibilitychange", () => { if (!document.hidden && state.mcp) pollEvents(false); });
+  setInterval(() => { if (!document.hidden) { renderConn(); } }, 15000);
+
+  /* ---------- controls ---------- */
+  const setScope = (v) => { state.scope = v; store("av.scope", v); render(); };
+  $("scopeShip").addEventListener("click", () => setScope("ship"));
+  $("scopeAll").addEventListener("click", () => setScope("all"));
+  for (const id of ["s-working", "s-needs", "s-done", "s-all"]) $(id).addEventListener("click", () => { state.filter = $(id).dataset.f === state.filter ? "all" : $(id).dataset.f; render(); });
+  $("refresh").addEventListener("click", async () => {
+    if (!state.mcp) return;
+    try { await state.mcp.invalidate(SERVER); } catch {}
+    state.listErr = null;
+    watchSessions();
+    pollEvents(true);
+  });
+
+  /* ---------- example mode (no connector) ---------- */
+  const now = Date.now();
+  const iso = (minAgo) => new Date(now - minAgo * 60000).toISOString();
+  const SAMPLE = [
+    { id: "ex1", title: "Ship party packages section", status_bucket: "SESSION_STATUS_BUCKET_WORKING", updated_at: iso(0.3), tags: ["ship"],
+      session_context: { outcomes: [{ git_repository: { git_info: { repo: "you/your-site", branches: ["claude/party-packages"] } } }] },
+      external_metadata: { usage: { cost_usd: 0.84 }, context_usage: { used_tokens: 142000, max_tokens: 1000000 } } },
+    { id: "ex2", title: "Ship online deposits", status_bucket: "SESSION_STATUS_BUCKET_BLOCKED", updated_at: iso(18), tags: ["ship"],
+      post_turn_summary: { needs_action: "add a STRIPE_SECRET_KEY in the environment settings" },
+      session_context: { outcomes: [{ git_repository: { git_info: { repo: "you/your-site", branches: ["claude/deposits"] } } }] },
+      external_metadata: { usage: { cost_usd: 2.10 }, context_usage: { used_tokens: 388000, max_tokens: 1000000 } } },
+    { id: "ex3", title: "Ship delivery-area checker", status_bucket: "SESSION_STATUS_BUCKET_COMPLETED", updated_at: iso(95), tags: ["ship"],
+      post_turn_summary: { status_detail: "Pushed to claude/delivery-zip and republished the site" },
+      session_context: { outcomes: [{ git_repository: { git_info: { repo: "you/your-site", branches: ["claude/delivery-zip"] } } }] },
+      external_metadata: { usage: { cost_usd: 1.37 }, context_usage: { used_tokens: 205000, max_tokens: 1000000 } } },
+  ];
+  const T = (m, name, input) => ({ id: name + m, at: iso(m), type: "tool", name, input });
+  const SAMPLE_EVENTS = {
+    ex1: [
+      { id: "y", at: iso(6), type: "you", text: "/ship add a Party packages section to the site" },
+      T(5.8, "Bash", { description: "Inspect repo state and branches", command: "git status" }),
+      T(5.5, "Read", { file_path: "src/data/site.ts" }),
+      { id: "s1", at: iso(5), type: "say", text: "The site keeps its content in src/data/site.ts, so the packages go there and a new PartyPackages component renders them." },
+      T(4.2, "Write", { file_path: "src/components/PartyPackages.tsx" }),
+      T(3.6, "Edit", { file_path: "src/data/site.ts" }),
+      T(3.1, "Edit", { file_path: "src/App.tsx" }),
+      T(1.2, "Bash", { description: "Typecheck and build the site", command: "npm run build" }),
+      T(0.4, "Bash", { description: "Screenshot desktop and phone widths", command: "node playwright-check.mjs" }),
+    ],
+    ex2: [
+      { id: "y", at: iso(30), type: "you", text: "/ship take a deposit when people book" },
+      T(28, "Grep", { pattern: "BookingForm" }),
+      T(24, "Write", { file_path: "api/deposit.ts" }),
+      T(20, "Bash", { description: "Build the site", command: "npm run build" }),
+      { id: "e", at: iso(18), type: "end", text: "", ms: 712000, cost: 2.1 },
+    ],
+    ex3: [
+      { id: "y", at: iso(140), type: "you", text: "/ship add a delivery-area ZIP checker" },
+      T(130, "Edit", { file_path: "src/components/Hero.tsx" }),
+      T(110, "Bash", { description: "Run lint and build", command: "npm run lint && npm run build" }),
+      T(100, "Bash", { description: "Push the branch", command: "git push -u origin claude/delivery-zip" }),
+      T(97, "Artifact", { action: "publish", file_path: "dist/index.html" }),
+      { id: "e", at: iso(95), type: "end", text: "", ms: 2700000, cost: 1.37 },
+    ],
+  };
+  function loadSampleEvents(id) { state.events = SAMPLE_EVENTS[id] || []; state.eventsFor = id; state.eventsAt = Date.now(); renderDetail(); }
+  const startSample = () => {
+    if (state.mcp) return;
+    state.sample = true; state.sessions = SAMPLE; state.scope = "ship";
+    render(); select("ex1", false);
+  };
+
+  /* ---------- boot ---------- */
+  render();
+  const boot = async () => {
+    let mcp = null;
+    try { mcp = window.claude?.use ? await window.claude.use("mcp") : null; } catch { mcp = null; }
+    if (!mcp) { startSample(); return; }
+    state.mcp = mcp;
+    watchSessions();
+  };
+  boot();
+})();
+</script>
