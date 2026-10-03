@@ -44,7 +44,7 @@ a { color: var(--holo); }
 
 .hud { max-width: 1440px; margin: 0 auto; padding-inline: 16px; padding-block: 14px 20px; display: grid; gap: 12px;
   grid-template-columns: minmax(0, 270px) minmax(0, 1fr) minmax(0, 330px);
-  grid-template-areas: "top top top" "banner banner banner" "roster core tele" "crew crew crew" "feed feed console"; }
+  grid-template-areas: "top top top" "banner banner banner" "needs needs needs" "roster core tele" "crew crew crew" "feed feed console"; }
 
 /* top bar */
 .top { grid-area: top; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 20px; border-bottom: 1px solid var(--edge); padding-bottom: 10px; }
@@ -163,6 +163,17 @@ h1 { margin: 0; font: 700 28px/1 var(--display); letter-spacing: 0.32em; color: 
 .toast b { color: var(--c, var(--holo)); }
 .banner { grid-area: banner; border: 1px solid var(--amber); color: var(--text); background: rgba(255, 184, 74, 0.08); padding: 8px 12px; font-size: 13px; }
 .banner b { color: var(--amber); }
+.needsbar { grid-area: needs; border: 1px solid var(--amber); background: rgba(255, 184, 74, 0.08); padding: 10px 14px; display: grid; gap: 8px; clip-path: polygon(14px 0, 100% 0, 100% calc(100% - 14px), calc(100% - 14px) 100%, 0 100%, 0 14px); }
+.needsbar .nh { font: 700 14px/1 var(--display); letter-spacing: 0.24em; text-transform: uppercase; color: var(--amber); display: flex; align-items: center; gap: 8px; }
+.needsbar .nh::before { content: ""; width: 10px; height: 10px; border-radius: 50%; background: var(--amber); box-shadow: 0 0 10px var(--amber); animation: blink 1s infinite; }
+.needrow { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 12px; align-items: center; padding: 8px 0; border-top: 1px dashed rgba(255, 184, 74, 0.3); }
+.needrow .nt { font: 700 16px/1.2 var(--display); letter-spacing: 0.04em; overflow-wrap: anywhere; }
+.needrow .na { font-size: 13px; color: var(--text); overflow-wrap: anywhere; }
+.needrow .acts { justify-content: flex-end; }
+.connect { grid-area: needs; border: 1px solid var(--holo); background: rgba(73, 227, 255, 0.08); padding: 14px; display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; justify-content: space-between; }
+.connect p { margin: 0; max-width: 70ch; font-size: 14px; }
+.connect b { color: var(--holo); }
+@media (max-width: 680px) { .needrow { grid-template-columns: minmax(0, 1fr); } .needrow .acts { justify-content: flex-start; } }
 .empty { color: var(--muted); padding: 14px 4px; font-size: 13px; }
 
 .boot { position: fixed; inset: 0; z-index: 70; pointer-events: none; display: grid; place-items: center; font: 600 14px/1.6 var(--display); letter-spacing: 0.4em; color: var(--holo); background: radial-gradient(circle, rgba(3, 7, 12, 0.6), rgba(3, 7, 12, 0.92)); animation: bootout 0.6s ease-in 1.5s forwards; text-transform: uppercase; text-align: center; }
@@ -178,11 +189,11 @@ h1 { margin: 0; font: 700 28px/1 var(--display); letter-spacing: 0.32em; color: 
 }
 
 @media (max-width: 1100px) {
-  .hud { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-areas: "top top" "banner banner" "core core" "crew crew" "roster tele" "feed feed" "console console"; }
+  .hud { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-areas: "top top" "banner banner" "needs needs" "core core" "crew crew" "roster tele" "feed feed" "console console"; }
   .core { min-height: 420px; }
 }
 @media (max-width: 680px) {
-  .hud { grid-template-columns: minmax(0, 1fr); grid-template-areas: "top" "banner" "core" "crew" "tele" "console" "roster" "feed"; }
+  .hud { grid-template-columns: minmax(0, 1fr); grid-template-areas: "top" "banner" "needs" "core" "crew" "tele" "console" "roster" "feed"; }
   .crew { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .core { min-height: 340px; }
   h1 { font-size: 22px; letter-spacing: 0.24em; }
@@ -210,6 +221,7 @@ h1 { margin: 0; font: 700 28px/1 var(--display); letter-spacing: 0.32em; color: 
   </header>
 
   <div class="banner" id="banner" hidden></div>
+  <div id="needsSlot" style="grid-area: needs; min-width: 0" hidden></div>
 
   <section class="panel roster" aria-label="Agents">
     <div class="ph"><span>Agents</span><span id="rosterCount">0</span></div>
@@ -691,7 +703,7 @@ h1 { margin: 0; font: 700 28px/1 var(--display); letter-spacing: 0.32em; color: 
     $("sync").textContent = S.listAt ? ago(S.listAt) : "—";
     const b = $("banner");
     if (S.listErr) { b.hidden = false; b.replaceChildren(h("b", null, "Link: "), errCopy(S.listErr)); }
-    else if (S.demo) { b.hidden = false; b.replaceChildren(h("b", null, "Demo mode. "), "These agents are examples. Open this page in claude.ai while signed in, and allow Claude Code Remote when asked, to see your real agents."); }
+    else if (S.demo) { b.hidden = false; b.replaceChildren(h("b", null, "Demo mode. "), "These agents are examples. This view can't reach your sessions; open the page at claude.ai (browser or the Claude app) while signed in to see your real agents."); }
     else b.hidden = true;
     $("voice").setAttribute("aria-pressed", String(S.voice));
     $("sound").setAttribute("aria-pressed", String(S.sound));
@@ -699,6 +711,32 @@ h1 { margin: 0; font: 700 28px/1 var(--display); letter-spacing: 0.32em; color: 
     $("scopeAll").setAttribute("aria-pressed", String(S.scope === "all"));
   };
 
+  const renderNeeds = () => {
+    const slot = $("needsSlot"); slot.replaceChildren();
+    if (S.connect) { // not linked yet: ask the viewer to connect
+      slot.hidden = false;
+      const denied = S.connect === "denied";
+      slot.append(h("div", { class: "connect" },
+        h("p", null, h("b", null, denied ? "Access is switched off. " : "Connect your sessions. "),
+          denied ? "You declined access to Claude Code Remote for this page. Turn it back on to see your real agents and which ones need you."
+                 : "ARC needs permission to read your Claude Code sessions. It only reads them as you, and only you can see this page."),
+        h("button", { class: "act", type: "button", onclick: connect }, denied ? "Open permissions" : "Connect sessions")));
+      return;
+    }
+    const list = visible().filter((s) => bucket(s) === "needs");
+    document.title = (list.length ? `(${list.length}) ` : "") + "Ship Agent View";
+    if (!list.length) { slot.hidden = true; return; }
+    slot.hidden = false;
+    slot.append(h("section", { class: "needsbar", "aria-label": "Agents that need you" },
+      h("div", { class: "nh" }, `${list.length} agent${list.length > 1 ? "s" : ""} need${list.length > 1 ? "" : "s"} you`),
+      list.slice(0, 5).map((s) => h("div", { class: "needrow" },
+        h("div", { style: "display:grid;gap:2px;min-width:0" }, h("span", { class: "nt" }, s.title || "Untitled"),
+          h("span", { class: "na" }, summary(s).needs_action || summary(s).status_detail || "Waiting for your reply.")),
+        h("div", { class: "acts" },
+          h("button", { class: "act", type: "button", onclick: () => select(s.id, true) }, "Lock on"),
+          h("button", { class: "act warn", type: "button", onclick: () => { select(s.id, true); openDraft(s.id, ""); } }, "Reply"),
+          S.demo ? null : h("a", { class: "act", href: "https://claude.ai/code/" + s.id, target: "_blank", rel: "noopener" }, "Open ↗"))))));
+  };
   const renderRoster = () => {
     const ul = $("agents"); ul.replaceChildren();
     const list = visible();
@@ -815,7 +853,7 @@ h1 { margin: 0; font: 700 28px/1 var(--display); letter-spacing: 0.32em; color: 
   };
 
   const markSeen = () => { for (const it of S.events) S.seen.add(it.id); };
-  const renderAll = () => { renderTop(); renderRoster(); renderTele(); renderCrew(); renderFeed(); markSeen(); };
+  const renderAll = () => { renderTop(); renderNeeds(); renderRoster(); renderTele(); renderCrew(); renderFeed(); markSeen(); };
 
   /* ================= live data ================= */
   const noticeChanges = () => {
@@ -878,13 +916,17 @@ h1 { margin: 0; font: 700 28px/1 var(--display); letter-spacing: 0.32em; color: 
   const onSessions = (list, at) => {
     S.sessions = list; S.listAt = at; S.listErr = null;
     if (S.scope === "ship" && !S.sessions.some(isShip) && !store("arc.scope")) S.scope = "all";
-    noticeChanges(); autoPick(); renderAll(); greet();
+    S.connect = null; noticeChanges(); autoPick(); renderAll(); greet();
   };
   const watchSessions = () => {
     if (S.unwatch) S.unwatch();
     S.unwatch = S.mcp.watchTool(SERVER, "list_sessions", { limit: 40 }, (ev) => {
       if (ev.type === "data") { const p = unwrap(ev.result.payload); onSessions(Array.isArray(p.data) ? p.data : [], ev.result.cache?.storedAt || Date.now()); }
-      else { S.listErr = ev.error; if (isDenial(ev.error)) S.sessions = []; renderAll(); }
+      else {
+        S.listErr = ev.error; if (isDenial(ev.error)) S.sessions = [];
+        if (["not_in_manifest", "consent_required"].includes(ev.error?.code)) { S.connect = "denied"; S.listErr = null; }
+        renderAll();
+      }
     }, { refetchInterval: LIST_MS, cache: { staleTime: 10000 } });
   };
   const onEvents = (id, items) => {
@@ -1073,7 +1115,7 @@ Set "focus" when the question is about one agent. Set "draft" only when the user
     ripples.push({ k: 0, c: COLORS.working }); tone(660, 0.1);
     if (!S.mcp) return;
     try { await S.mcp.invalidate(SERVER); } catch {}
-    S.listErr = null; watchSessions(); pollEvents(true);
+    S.listErr = null; if (S.connect) { connect(); return; } watchSessions(); pollEvents(true);
   });
 
   /* ================= demo mode ================= */
@@ -1153,7 +1195,23 @@ Set "focus" when the question is about one agent. Set "draft" only when the user
     const [mcp, sample] = await Promise.all([use("mcp"), use("sample")]);
     S.sample = sample || null;
     if (!mcp) { startDemo(); return; }
-    S.mcp = mcp; watchSessions();
+    S.mcp = mcp; S.perms = await use("permissions");
+    const st = S.perms ? await S.perms.state("mcp:Claude Code Remote").catch(() => "unavailable") : "unavailable";
+    if (st === "denied") { S.connect = "denied"; renderAll(); return; }
+    if (st === "prompt") { // one dialog up front, so the live view starts right away
+      S.connect = "prompt"; renderAll();
+      const r = await S.perms.request(["mcp:Claude Code Remote"]).catch(() => ({}));
+      if (r["mcp:Claude Code Remote"] === "denied") { S.connect = "denied"; renderAll(); return; }
+    }
+    S.connect = null; renderAll(); watchSessions();
   })();
+  async function connect() {
+    if (!S.mcp) return;
+    if (S.connect === "denied" && S.perms) { try { await S.perms.manage(); } catch { log("arc", "Open the artifact's Permissions menu and switch on Claude Code Remote, then press Rescan."); } }
+    else if (S.perms) await S.perms.request(["mcp:Claude Code Remote"]).catch(() => ({}));
+    const st = S.perms ? await S.perms.state("mcp:Claude Code Remote").catch(() => "unavailable") : "granted";
+    if (st === "denied") { S.connect = "denied"; renderAll(); return; }
+    S.connect = null; renderAll(); watchSessions();
+  }
 })();
 </script>
