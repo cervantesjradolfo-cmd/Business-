@@ -44,25 +44,38 @@ whose title contains "ship".
 ## 4. Test it
 - Hand off to the `tester` subagent (Agent tool, `subagent_type: "tester"`). It writes tests
   for `.pipeline/changes.md`, runs `npm test`, and reports in `.pipeline/test-results.md`.
-- If the status is FAIL, stop the pipeline: the Tester does not fix code, and neither do
-  you at this point. Report the failures to the user (until a Reviewer stage exists).
+- Whether it reports PASS or FAIL, go on to Check and Review. Do not fix code here: a
+  failure is for the Reviewer to judge.
 
 ## 5. Check it
-Start with what `.pipeline/changes.md` says to focus on. Run whatever else the project has,
-and fix what fails before going on:
-- install (`npm ci`), typecheck, lint (no new warnings in files you touched), build
+Run the project's other checks and record them in `.pipeline/checks.md` (what ran, what
+passed, what failed, what you could not test and why). Do not fix code here either.
+- install (`npm ci`), typecheck (`npx tsc -b`), lint (note any new warnings in touched files), build
 - for anything visual, open it in Chromium with Playwright at desktop (1280px) and
   phone (375px) widths, click through the new feature, check for console errors and
   horizontal scroll, and look at the screenshots
-- say plainly what you could not test and why
 
-## 6. Deliver it
-- Commit the code and the Tester's test files with a clear message, and push to the session's designated branch.
-- Do not open a pull request unless the user asks.
+## 6. Review it
+- Hand off to the `reviewer` subagent (Agent tool, `subagent_type: "reviewer"`). It reads
+  everything in `.pipeline/`, the diff and the tests, and writes `.pipeline/review.md`,
+  whose first line is the verdict.
+- **VERDICT: SHIP** → go to Deliver.
+- **VERDICT: NEEDS WORK** → run the `coder` again, telling it to fix exactly the Fix list in
+  `.pipeline/review.md` and nothing else, then repeat Test, Check and Review. Do this at
+  most twice; if it still is not SHIP, stop and report.
+- **VERDICT: BLOCK** → stop. Do not commit. Report the Reviewer's findings to the user.
+
+## 7. Deliver it (only after SHIP)
+- Commit the code and the tests with a clear message, and push to the session's
+  designated branch. This is not the release: the user signs off on the branch.
+- Do not open a pull request or merge unless the user asks.
 - If a Claude artifact is a published build of this project, rebuild it in the same
   shape it was published (read it first), and republish to the same URL so the user
   can try the change right away.
 
-## 7. Report
-A short summary: what was built, where to try it (artifact link), what was tested,
-anything the user must do (API keys, deploy settings), and the branch it is on.
+## 8. Report
+A short summary for the user's sign-off: the Reviewer's verdict and notes, what was built,
+where to try it (artifact link), what was tested, how many review rounds it took, anything
+the user must do (API keys, deploy settings), and the branch it is on. When the pipeline
+stopped (OPEN QUESTIONS, BLOCK, or still NEEDS WORK after two rounds), say so first and
+quote what needs the user's decision.
