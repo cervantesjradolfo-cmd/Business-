@@ -697,12 +697,14 @@ h1 { margin: 0; font: 700 28px/1 var(--display); letter-spacing: 0.32em; color: 
   const renderTop = () => {
     const led = $("led"), link = $("link");
     if (S.demo) { led.className = "led demo"; link.textContent = "Demo feed"; }
+    else if (S.relay && !S.listErr) { led.className = "led on"; link.textContent = "Live relay"; }
     else if (S.listErr && !S.sessions.length) { led.className = "led"; link.textContent = "Offline"; }
     else if (S.listAt) { led.className = "led on"; link.textContent = "Live link"; }
     else { led.className = "led"; link.textContent = "Linking…"; }
     $("sync").textContent = S.listAt ? ago(S.listAt) : "—";
     const b = $("banner");
     if (S.listErr) { b.hidden = false; b.replaceChildren(h("b", null, "Link: "), errCopy(S.listErr)); }
+    else if (S.relay) { b.hidden = false; b.replaceChildren(h("b", null, "Live relay. "), "Your organization blocks this page from reading sessions directly, so /ship sessions report their progress here themselves. Sessions that are not running /ship don't appear."); }
     else if (S.demo) { b.hidden = false; b.replaceChildren(h("b", null, "Demo mode. "), "These agents are examples. This view can't reach your sessions; open the page at claude.ai (browser or the Claude app) while signed in to see your real agents."); }
     else b.hidden = true;
     $("voice").setAttribute("aria-pressed", String(S.voice));
@@ -734,7 +736,7 @@ h1 { margin: 0; font: 700 28px/1 var(--display); letter-spacing: 0.32em; color: 
           h("span", { class: "na" }, summary(s).needs_action || summary(s).status_detail || "Waiting for your reply.")),
         h("div", { class: "acts" },
           h("button", { class: "act", type: "button", onclick: () => select(s.id, true) }, "Lock on"),
-          h("button", { class: "act warn", type: "button", onclick: () => { select(s.id, true); openDraft(s.id, ""); } }, "Reply"),
+          S.relay ? null : h("button", { class: "act warn", type: "button", onclick: () => { select(s.id, true); openDraft(s.id, ""); } }, "Reply"),
           S.demo ? null : h("a", { class: "act", href: "https://claude.ai/code/" + s.id, target: "_blank", rel: "noopener" }, "Open ↗"))))));
   };
   const renderRoster = () => {
@@ -744,7 +746,7 @@ h1 { margin: 0; font: 700 28px/1 var(--display); letter-spacing: 0.32em; color: 
     $("liveCount").textContent = list.filter((s) => bucket(s) === "working").length;
     const needs = list.filter((s) => bucket(s) === "needs");
     $("alert").textContent = needs.length ? `⚠ ${needs.length} agent${needs.length > 1 ? "s" : ""} waiting on you` : "";
-    if (!list.length) { ul.append(h("li", { class: "empty" }, S.sessions.length ? "No /ship sessions yet. Start one with /ship, or switch to All." : "Scanning…")); return; }
+    if (!list.length) { ul.append(h("li", { class: "empty" }, S.relay ? "No /ship session has reported yet. Start one with /ship." : S.sessions.length ? "No /ship sessions yet. Start one with /ship, or switch to All." : "Scanning…")); return; }
     const order = { working: 0, needs: 1, failed: 2, done: 3, other: 4 };
     for (const s of list.slice().sort((a, b) => order[bucket(a)] - order[bucket(b)] || Date.parse(b.updated_at) - Date.parse(a.updated_at))) {
       const b = bucket(s);
@@ -791,7 +793,7 @@ h1 { margin: 0; font: 700 28px/1 var(--display); letter-spacing: 0.32em; color: 
       h("div", { class: "pipe-note" }, pl.note ? "› " + pl.note : pl.request ? "Request: " + short(pl.request, 120) : ""),
       h("div", { class: "acts" },
         S.demo ? null : h("a", { class: "act", href: "https://claude.ai/code/" + s.id, target: "_blank", rel: "noopener" }, "Open session ↗"),
-        h("button", { class: "act" + (b === "needs" ? " warn" : ""), type: "button", onclick: () => openDraft(s.id, "") }, "Message agent"),
+        S.relay ? null : h("button", { class: "act" + (b === "needs" ? " warn" : ""), type: "button", onclick: () => openDraft(s.id, "") }, "Message agent"),
         ...(s.external_metadata?.artifacts || []).filter((a, i, arr) => arr.findIndex((x) => x.url === a.url) === i).slice(-2)
           .map((a) => h("a", { class: "act", href: a.url, target: "_blank", rel: "noopener" }, short(a.title || "Artifact", 22) + " ↗"))),
     ].filter(Boolean));
@@ -870,6 +872,58 @@ h1 { margin: 0; font: 700 28px/1 var(--display); letter-spacing: 0.32em; color: 
       S.prevBucket.set(s.id, b);
     }
   };
+  /* ---------- live relay: /ship sessions write events into this page's own store ---------- */
+  const RELAY_CODES = ["blocked_by_policy", "approval_required", "not_granted", "capability_disabled", "capability_removed", "server_not_connected", "not_in_manifest", "consent_required", "selection_required"];
+  S.relayItems = {};
+  const STATUS_BUCKET = { working: "WORKING", needs: "BLOCKED", done: "COMPLETED", failed: "FAILED" };
+  const relayItem = (e) => {
+    const base = { id: "r:" + e.id, at: e.at || "" };
+    const crew = e.crew ? String(e.crew).toLowerCase() : null;
+    switch (e.kind) {
+      case "you": return { ...base, type: "you", text: String(e.text || "") };
+      case "start": return { ...base, type: "tool", name: "Agent", input: { subagent_type: crew, description: String(e.text || "") } };
+      case "done": return { ...base, type: "crewdone", crew, text: String(e.text || "Finished"), isError: !!e.error };
+      case "step": return { ...base, type: "tool", name: String(e.tool || "Step"), input: { description: String(e.text || "") }, who: crew };
+      case "say": return { ...base, type: "say", text: String(e.text || ""), who: crew };
+      case "end": return { ...base, type: "end", isError: e.status === "failed" };
+      case "status": return e.status === "needs" ? { ...base, type: "say", text: "Needs you: " + String(e.text || e.needs || "") } : null;
+      default: return null;
+    }
+  };
+  const buildFromRelay = (docs) => {
+    const groups = {};
+    for (const d of docs) if (d && d.session) (groups[d.session] ||= []).push(d);
+    const list = [];
+    for (const [sid, evs] of Object.entries(groups)) {
+      evs.sort((a, b) => String(a.at).localeCompare(String(b.at)));
+      const last = evs[evs.length - 1];
+      const st = [...evs].reverse().find((e) => e.kind === "status" || e.kind === "end");
+      const status = st ? (st.kind === "end" ? (st.status === "failed" ? "failed" : "done") : String(st.status || "working")) : "working";
+      const title = [...evs].reverse().find((e) => e.title)?.title || "Untitled /ship run";
+      const branchName = [...evs].reverse().find((e) => e.branch)?.branch || "";
+      list.push({ id: sid, title: String(title), status_bucket: "SESSION_STATUS_BUCKET_" + (STATUS_BUCKET[status] || "WORKING"), updated_at: last.at, tags: ["ship"],
+        post_turn_summary: status === "needs" ? { needs_action: String(st?.text || st?.needs || "") } : { status_detail: st?.kind === "status" ? String(st.text || "") : "" },
+        session_context: { outcomes: [{ git_repository: { git_info: { repo: String(last.repo || ""), branches: branchName ? [String(branchName)] : [] } } }] } });
+      S.relayItems[sid] = evs.map(relayItem).filter(Boolean);
+      const ac = activeCrew(S.relayItems[sid]); S.crewBy[sid] = ac ? ac.name : null;
+    }
+    list.sort((a, b) => String(b.updated_at).localeCompare(String(a.updated_at)));
+    onSessions(list, Date.now());
+    if (S.selected && S.relayItems[S.selected]) onEvents(S.selected, S.relayItems[S.selected].slice());
+  };
+  async function startRelay() {
+    if (S.relay) return true;
+    const db = window.claude?.use ? await window.claude.use("db").catch(() => null) : null;
+    if (!db) return false;
+    if (S.unwatch) { S.unwatch(); S.unwatch = null; }
+    clearTimeout(S.timer);
+    S.relay = true; S.listErr = null; S.connect = null; S.scope = "ship"; renderAll();
+    db.collection("events").orderBy("at", "desc").limit(500).onSnapshot(
+      (snap) => buildFromRelay(snap.docs.map((d) => ({ id: d.id, ...(d.data() || {}) }))),
+      (err) => { S.listErr = { code: err?.code || "upstream_error", message: err?.message }; renderAll(); });
+    return true;
+  }
+
   S.crewBy = {}; S.greeted = false;
   function crewOf(id) {
     if (id === S.eventsFor) { const a = activeCrew(S.events); return a ? a.name : null; }
@@ -877,7 +931,7 @@ h1 { margin: 0; font: 700 28px/1 var(--display); letter-spacing: 0.32em; color: 
   }
   let scanning = false;
   const scanCrew = async () => {
-    if (!S.mcp || scanning || document.hidden) return;
+    if (S.relay || !S.mcp || scanning || document.hidden) return;
     scanning = true;
     try {
       const others = visible().filter((s) => bucket(s) === "working" && s.id !== S.selected).slice(0, 5);
@@ -925,6 +979,7 @@ h1 { margin: 0; font: 700 28px/1 var(--display); letter-spacing: 0.32em; color: 
       else {
         S.listErr = ev.error; if (isDenial(ev.error)) S.sessions = [];
         if (["not_in_manifest", "consent_required"].includes(ev.error?.code)) { S.connect = "denied"; S.listErr = null; }
+        if (RELAY_CODES.includes(ev.error?.code)) { startRelay().then((ok) => { if (!ok) renderAll(); }); return; }
         renderAll();
       }
     }, { refetchInterval: LIST_MS, cache: { staleTime: 10000 } });
@@ -960,7 +1015,9 @@ h1 { margin: 0; font: 700 28px/1 var(--display); letter-spacing: 0.32em; color: 
   let gen = 0;
   const pollEvents = async (fresh) => {
     clearTimeout(S.timer);
-    const id = S.selected; if (!id || !S.mcp) return;
+    const id = S.selected;
+    if (S.relay) { if (id) onEvents(id, (S.relayItems[id] || []).slice()); return; }
+    if (!id || !S.mcp) return;
     const my = ++gen;
     try {
       const res = await S.mcp.callTool(SERVER, "list_events", { session_id: id, limit: 100, kinds: ["user", "assistant", "result", "system"] }, { cache: { staleTime: fresh ? 0 : 3000, refresh: !!fresh } });
@@ -1194,14 +1251,14 @@ Set "focus" when the question is about one agent. Set "draft" only when the user
     const use = (n) => (window.claude?.use ? window.claude.use(n).catch(() => null) : Promise.resolve(null));
     const [mcp, sample] = await Promise.all([use("mcp"), use("sample")]);
     S.sample = sample || null;
-    if (!mcp) { startDemo(); return; }
+    if (!mcp) { if (!(await startRelay())) startDemo(); return; }
     S.mcp = mcp; S.perms = await use("permissions");
     const st = S.perms ? await S.perms.state("mcp:Claude Code Remote").catch(() => "unavailable") : "unavailable";
-    if (st === "denied") { S.connect = "denied"; renderAll(); return; }
+    if (st === "denied") { if (!(await startRelay())) { S.connect = "denied"; renderAll(); } return; }
     if (st === "prompt") { // one dialog up front, so the live view starts right away
       S.connect = "prompt"; renderAll();
       const r = await S.perms.request(["mcp:Claude Code Remote"]).catch(() => ({}));
-      if (r["mcp:Claude Code Remote"] === "denied") { S.connect = "denied"; renderAll(); return; }
+      if (r["mcp:Claude Code Remote"] === "denied") { if (!(await startRelay())) { S.connect = "denied"; renderAll(); } return; }
     }
     S.connect = null; renderAll(); watchSessions();
   })();
