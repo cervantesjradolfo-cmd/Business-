@@ -23,14 +23,22 @@ whose title contains "ship".
 - If the work lives on another branch, bring it onto your working branch
   (fast-forward or merge, never a rebase of someone else's branch).
 
-## 2. Build it
-- Match the project's stack, file layout, naming and styling.
+## 2. Plan it
+- Hand the request to the `planner` subagent (Agent tool, `subagent_type: "planner"`),
+  passing the user's request word for word plus which branch the code is on.
+  It writes a spec to `specs/<feature-slug>.md`.
+- Read the spec. If it lists open questions that block the work, ask the user; otherwise
+  build from it, and treat its acceptance criteria and checks as the definition of done.
+- Skip this stage for a one-line fix or a pure content edit.
+
+## 3. Build it
+- Follow the spec. Match the project's stack, file layout, naming and styling.
 - Keep the change focused on what was asked. Put editable content where the project
   already keeps it (for example a data file the README points to).
 - If the feature needs a secret (API key) or a server, make it degrade gracefully
   without one, and document the setup in the README.
 
-## 3. Check it
+## 4. Check it
 Run whatever the project has, and fix what fails before going on:
 - install (`npm ci`), typecheck, lint (no new warnings in files you touched), build
 - for anything visual, open it in Chromium with Playwright at desktop (1280px) and
@@ -38,13 +46,13 @@ Run whatever the project has, and fix what fails before going on:
   horizontal scroll, and look at the screenshots
 - say plainly what you could not test and why
 
-## 4. Deliver it
-- Commit with a clear message and push to the session's designated branch.
+## 5. Deliver it
+- Commit the spec with the code, with a clear message, and push to the session's designated branch.
 - Do not open a pull request unless the user asks.
 - If a Claude artifact is a published build of this project, rebuild it in the same
   shape it was published (read it first), and republish to the same URL so the user
   can try the change right away.
 
-## 5. Report
+## 6. Report
 A short summary: what was built, where to try it (artifact link), what was tested,
 anything the user must do (API keys, deploy settings), and the branch it is on.

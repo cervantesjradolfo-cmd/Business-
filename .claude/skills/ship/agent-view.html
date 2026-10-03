@@ -320,6 +320,7 @@ h1 { margin: 0; font: 700 28px/1 var(--display); letter-spacing: 0.32em; color: 
   const toolLine = (name, input) => {
     input = input || {};
     let nm = name || "tool"; const m = nm.match(/^mcp__(.+?)__(.+)$/); if (m) nm = m[2];
+    if (name === "Agent" && input.subagent_type) nm = "◆ " + input.subagent_type;
     let arg = "";
     switch (name) {
       case "Bash": arg = input.description || short(input.command); break;
@@ -341,6 +342,14 @@ h1 { margin: 0; font: 700 28px/1 var(--display); letter-spacing: 0.32em; color: 
       if (/git (push|commit)/.test(cmd)) return 3;
       if (/(npm|pnpm|yarn) (ci|install|run (build|lint|typecheck|test)|test)|tsc\b|oxlint|eslint|playwright|vitest|jest|pytest|chromium/.test(cmd)) return 2;
       if (/git (fetch|ls-tree|log|branch|status|merge)|\bls\b|\bcat\b|\bfind\b|\bgrep\b/.test(cmd)) return 0;
+      return null;
+    }
+    if (name === "Agent") {
+      const t = String(input.subagent_type || "").toLowerCase();
+      if (/plan|spec|architect/.test(t)) return 0;
+      if (/build|implement|coder|dev/.test(t)) return 1;
+      if (/test|check|review|qa|verify/.test(t)) return 2;
+      if (/ship|deliver|deploy|release|publish/.test(t)) return 3;
       return null;
     }
     if (["Read", "Grep", "Glob"].includes(name)) return 0;
@@ -380,7 +389,7 @@ h1 { margin: 0; font: 700 28px/1 var(--display); letter-spacing: 0.32em; color: 
     }
     return out;
   };
-  const STEPS = ["Find", "Build", "Check", "Deliver", "Report"];
+  const STEPS = ["Plan", "Build", "Check", "Deliver", "Report"];
   const pipeline = (items, working) => {
     let start = 0; items.forEach((it, i) => { if (it.type === "you") start = i; });
     const turn = items.slice(start);
@@ -881,7 +890,7 @@ Set "focus" when the question is about one agent. Set "draft" only when the user
   ];
   const T = (m, name, input) => ({ id: Math.random().toString(36).slice(2), at: iso(m), type: "tool", name, input });
   const DEMO_EV = {
-    "party-packages": [{ id: "pp0", at: iso(6), type: "you", text: "/ship add a Party packages section to the site" }, T(5.8, "Bash", { description: "Inspect repo state and branches", command: "git status" }), T(5.5, "Read", { file_path: "src/data/site.ts" }), { id: "pp1", at: iso(5), type: "say", text: "Packages go in src/data/site.ts and a new PartyPackages component renders them." }, T(4.2, "Write", { file_path: "src/components/PartyPackages.tsx" }), T(3.6, "Edit", { file_path: "src/data/site.ts" })],
+    "party-packages": [{ id: "pp0", at: iso(6), type: "you", text: "/ship add a Party packages section to the site" }, T(5.8, "Bash", { description: "Inspect repo state and branches", command: "git status" }), T(5.7, "Agent", { subagent_type: "planner", description: "Spec the party packages section" }), T(5.5, "Read", { file_path: "specs/party-packages.md" }), { id: "pp1", at: iso(5), type: "say", text: "Packages go in src/data/site.ts and a new PartyPackages component renders them." }, T(4.2, "Write", { file_path: "src/components/PartyPackages.tsx" }), T(3.6, "Edit", { file_path: "src/data/site.ts" })],
     "gallery-video": [{ id: "gv0", at: iso(3), type: "you", text: "/ship add a short video reel to the gallery" }, T(2.6, "Grep", { pattern: "Gallery" }), T(1.9, "Read", { file_path: "src/components/Gallery.tsx" })],
     deposits: [{ id: "d0", at: iso(30), type: "you", text: "/ship take a deposit when people book" }, T(24, "Write", { file_path: "api/deposit.ts" }), T(20, "Bash", { description: "Build the site", command: "npm run build" }), { id: "d1", at: iso(18), type: "say", text: "Deposits are built but need a Stripe key to go live. Add STRIPE_SECRET_KEY in the environment settings." }, { id: "d2", at: iso(18), type: "end", ms: 712000, cost: 2.1 }],
     "delivery-zip": [{ id: "z0", at: iso(140), type: "you", text: "/ship add a delivery-area ZIP checker" }, T(130, "Edit", { file_path: "src/components/Hero.tsx" }), T(110, "Bash", { description: "Run lint and build", command: "npm run lint && npm run build" }), T(100, "Bash", { description: "Push the branch", command: "git push -u origin claude/delivery-zip" }), { id: "z1", at: iso(95), type: "end", ms: 2700000, cost: 1.37 }],
