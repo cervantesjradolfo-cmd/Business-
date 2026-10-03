@@ -31,14 +31,18 @@ whose title contains "ship".
 - Skip this stage for a one-line fix or a pure content edit.
 
 ## 3. Build it
-- Follow the spec. Match the project's stack, file layout, naming and styling.
-- Keep the change focused on what was asked. Put editable content where the project
-  already keeps it (for example a data file the README points to).
-- If the feature needs a secret (API key) or a server, make it degrade gracefully
-  without one, and document the setup in the README.
+- Hand off to the `coder` subagent (Agent tool, `subagent_type: "coder"`). It implements
+  `.pipeline/spec.md` and writes a summary to `.pipeline/changes.md`.
+- If the coder stops on OPEN QUESTIONS, ask the user, then run it again.
+- Read `.pipeline/changes.md`; it tells the Check stage where to focus.
+- For a one-line fix or a pure content edit that skipped planning, make the change yourself,
+  matching the project's stack and styling and keeping editable content where the project
+  keeps it (for example `src/data/site.ts`).
+- If the feature needs a secret (API key) or a server, it must degrade gracefully without
+  one and the setup must be documented in the README.
 
 ## 4. Check it
-Run whatever the project has, and fix what fails before going on:
+Start with what `.pipeline/changes.md` says to focus on. Run whatever the project has, and fix what fails before going on:
 - install (`npm ci`), typecheck, lint (no new warnings in files you touched), build
 - for anything visual, open it in Chromium with Playwright at desktop (1280px) and
   phone (375px) widths, click through the new feature, check for console errors and
