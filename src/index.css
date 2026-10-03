@@ -1,0 +1,94 @@
+@import 'tailwindcss';
+
+@theme {
+  --font-display: 'Baloo 2', ui-rounded, system-ui, sans-serif;
+  --font-sans: 'Nunito', ui-rounded, system-ui, sans-serif;
+
+  --color-primary: #2563eb;
+  --color-primary-dark: #1d4ed8;
+  --color-sun: #fcd34d;
+  --color-sun-dark: #f59e0b;
+  --color-pop: #ec4899;
+  --color-pop-dark: #be185d;
+  --color-grass: #22c55e;
+  --color-ink: #0f172a;
+  --color-ink-soft: #475569;
+  --color-sky: #eff6ff;
+  --color-cream: #fffbeb;
+
+  --animate-marquee: marquee 40s linear infinite;
+  --animate-float: float 6s ease-in-out infinite;
+  --animate-wiggle: wiggle 2.4s ease-in-out infinite;
+
+  @keyframes marquee {
+    from { transform: translateX(0); }
+    to { transform: translateX(-50%); }
+  }
+  @keyframes float {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-12px); }
+  }
+  @keyframes wiggle {
+    0%, 100% { transform: rotate(-3deg); }
+    50% { transform: rotate(3deg); }
+  }
+}
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+    scroll-padding-top: 88px;
+  }
+  body {
+    @apply bg-sky font-sans text-ink antialiased;
+    overflow-x: clip;
+    -webkit-tap-highlight-color: transparent;
+  }
+  h1, h2, h3, h4 {
+    @apply font-display;
+    text-wrap: balance;
+  }
+  :focus-visible {
+    outline: 3px solid var(--color-primary);
+    outline-offset: 3px;
+    border-radius: 12px;
+  }
+  button, a, [role='button'] {
+    touch-action: manipulation;
+  }
+}
+
+/* Claymorphism surfaces: chunky, soft, toy-like */
+@utility clay {
+  background: #fff;
+  border: 3px solid rgb(15 23 42 / 0.06);
+  border-radius: 28px;
+  box-shadow:
+    0 18px 40px -18px rgb(37 99 235 / 0.35),
+    inset 0 -6px 0 rgb(15 23 42 / 0.05);
+}
+@utility btn {
+  @apply inline-flex min-h-12 cursor-pointer items-center justify-center gap-2 rounded-full px-6 font-display text-lg font-bold transition-[translate,box-shadow,background-color] duration-200 select-none active:translate-y-1 disabled:cursor-not-allowed disabled:opacity-50;
+}
+@utility btn-primary {
+  @apply btn bg-pop text-white hover:-translate-y-0.5;
+  box-shadow: 0 6px 0 var(--color-pop-dark), 0 14px 24px -8px rgb(236 72 153 / 0.6);
+  &:active { box-shadow: 0 2px 0 var(--color-pop-dark); }
+}
+@utility btn-secondary {
+  @apply btn bg-white text-primary hover:-translate-y-0.5;
+  box-shadow: 0 6px 0 #bfdbfe, 0 14px 24px -10px rgb(37 99 235 / 0.4);
+  &:active { box-shadow: 0 2px 0 #bfdbfe; }
+}
+@utility eyebrow {
+  @apply inline-flex items-center gap-2 rounded-full bg-sun px-4 py-1.5 font-display text-sm font-bold tracking-wide text-ink uppercase;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
