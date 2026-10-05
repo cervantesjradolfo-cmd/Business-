@@ -8,7 +8,8 @@
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "preview": "vite preview",
-    "test": "vitest run"
+    "test": "vitest run",
+    "deploy:private": "node scripts/deploy-private.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.131.0",

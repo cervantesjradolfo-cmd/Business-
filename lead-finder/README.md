@@ -33,6 +33,23 @@ Optional: copy `.env.example` to `.env.local` and fill it in.
 3. Add the environment variables below. Set `APP_ACCESS_KEY` (or turn on Vercel Deployment Protection) before you share the URL, see "Protect your deployment".
 4. Deploy. The functions in `api/` are picked up automatically (`vercel.json` allows up to 60 seconds per call).
 
+### Private deploy in one command
+
+`npm run deploy:private` deploys to Vercel so that only you can open the site. It turns on
+Vercel Authentication (visitors must be signed in to your Vercel account), sets an
+`APP_ACCESS_KEY` as a second lock on the API, deploys to production, and checks that a
+signed-out request is refused. It needs these environment variables:
+
+| Variable | Needed | What for |
+| --- | --- | --- |
+| `VERCEL_TOKEN` | yes | A token from https://vercel.com/account/tokens |
+| `LEADS_CONTACT_EMAIL` | recommended | Your e-mail, sent to OpenStreetMap as they ask |
+| `APP_ACCESS_KEY` | recommended | Your own access key; if unset, one is generated and printed once |
+| `ANTHROPIC_API_KEY` | optional | AI-written pitches |
+| `VERCEL_SCOPE` / `VERCEL_TEAM_ID` | optional | Deploy into a Vercel team instead of your personal account |
+
+Re-run it after code changes to redeploy. Enter the access key in the app under "Your details".
+
 ## Environment variables
 
 | Name | What it does |
