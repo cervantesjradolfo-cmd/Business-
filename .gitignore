@@ -24,3 +24,6 @@ dist-ssr
 *.sw?
 __pycache__/
 .pipeline/
+
+# Vercel project link (created by lead-finder/scripts/deploy-private.mjs)
+.vercel

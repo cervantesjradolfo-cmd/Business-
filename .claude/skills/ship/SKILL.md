@@ -8,14 +8,27 @@ argument-hint: "<what to build or change>"
 
 The user wants the thing in their request built, checked and delivered, not just planned.
 
-## 0. Show up in the Agent View
-The user watches /ship runs live in the Agent View artifact
+## 0. Report to the Agent View (ARC)
+The user watches /ship runs live, often from their phone, in the ARC artifact
 (https://claude.ai/artifact/PvgSpsCuhcmTZfCdCjd3Nq, source `agent-view.html` next to this file).
-When the `set_session_tags` tool (claude-code-remote) is available, tag this session `ship`
-first: call `get_session` with no `session_id` to get your id, then `set_session_tags` with
-`add: ["ship"]`. Skip this silently if the tools are missing. The view also picks up sessions
-whose title contains "ship".
-
+Their organization blocks the page from reading sessions directly, so you report to it:
+- If `set_session_tags` (claude-code-remote) is available, tag this session `ship`
+  (`get_session` with no `session_id` gives your id, then `add: ["ship"]`).
+- Write events into ARC's store with the `ArtifactData` tool: `action: "batch"` (or `"set"`),
+  `url` = the ARC link above, `collection: "events"`, a new `doc_id` per event of the form
+  `<session id>-<UTC yyyymmddThhmmssZ>-<nn>`, and these fields:
+  - always: `session` (your session id, or a short slug if you have none), `at` (UTC ISO time), `kind`
+  - first event of a run also: `title` ("Ship <feature in 2-4 words>"), `repo`, `branch`
+  - `kind: "you"` + `text`: the user's request, word for word
+  - `kind: "status"` + `status` (`working` | `needs` | `done` | `failed`) + `text` (one line)
+    + `title`. Use `needs` whenever you stop to wait for the user, with exactly what they must do.
+  - `kind: "start"` + `crew` (`planner` | `coder` | `tester` | `reviewer`) + `text`: a stage begins
+  - `kind: "done"` + `crew` + `text`: that stage's result (spec path, `Status: PASS`,
+    `VERDICT: SHIP`, …), plus `error: true` if it failed
+  - `kind: "step"` + `text` (+ `crew`, `tool`): optional notable step (build, browser check, push)
+  - `kind: "end"` + `status` (`done` | `failed`) when the run finishes
+- Report at least: the request, each crew start and done, every `needs`, and the end.
+  Creates need no `if_version`. If the tool is missing or a write fails, carry on without it.
 ## 1. Find the code
 - Look at the current branch first. If the project the user names (for example a website)
   is not there, check the other remote branches (`git fetch origin` then
