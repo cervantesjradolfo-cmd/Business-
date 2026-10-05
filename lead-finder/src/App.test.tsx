@@ -13,7 +13,7 @@ const BETA = mk(2, { name: 'Beta Bakery' })
 const GAMMA = mk(3, { name: 'Gamma Grill', phone: '+1 555-0003', openingHours: 'Mo-Su 09:00-17:00', website: 'https://gamma.example.com' })
 const GAMMA_AUDIT: AuditResult = { id: GAMMA.id, status: 'ok', gaps: [], checkedAt: '2026-01-01T00:00:00Z' }
 
-type Opts = { search?: () => Response; leads?: Lead[]; notice?: string; pitch?: () => Response }
+type Opts = { search?: () => Response; leads?: Lead[]; notice?: string; source?: 'overpass' | 'nominatim'; pitch?: () => Response }
 const jsonRes = (data: unknown, status = 200) =>
   new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json' } })
 
@@ -24,7 +24,7 @@ function stubApi(o: Opts = {}) {
     const body = init?.body ? JSON.parse(init.body as string) : undefined
     calls.push({ path: url, body })
     if (url.endsWith('/api/search')) {
-      return o.search ? o.search() : jsonRes({ center: { lat: 1, lon: 1, displayName: 'X' }, leads: o.leads ?? [ALPHA, BETA, GAMMA], source: 'overpass', notice: o.notice })
+      return o.search ? o.search() : jsonRes({ center: { lat: 1, lon: 1, displayName: 'X' }, leads: o.leads ?? [ALPHA, BETA, GAMMA], source: o.source ?? 'overpass', notice: o.notice })
     }
     if (url.endsWith('/api/audit')) return jsonRes({ results: [GAMMA_AUDIT] })
     if (url.endsWith('/api/pitch')) {
@@ -80,11 +80,43 @@ describe('first run and search flow', () => {
   })
 
   it('shows the fallback notice above the list', async () => {
-    stubApi({ notice: 'Map servers were busy, so results came from a simpler search and may be incomplete.' })
+    stubApi({ notice: 'The full map search was unavailable, so these results come from a simpler search.' })
     const user = userEvent.setup()
     render(<App />)
     await search(user)
-    expect(await screen.findByText(/Map servers were busy/)).toBeTruthy()
+    expect(await screen.findByText(/full map search was unavailable/)).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Try full search again' })).toBeNull()
+  })
+
+  it('retries the full search from the fallback notice, keeping the old results meanwhile', async () => {
+    const notice = 'The full map search was unavailable, so these results come from a simpler search.'
+    const user = userEvent.setup()
+    stubApi({ source: 'nominatim', notice })
+    render(<App />)
+    await search(user)
+    const btn = await screen.findByRole('button', { name: 'Try full search again' })
+    const firstBody = calls.find((c) => c.path.endsWith('/api/search'))!.body
+    let release!: () => void
+    const gate = new Promise<void>((r) => { release = r })
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      const body = init?.body ? JSON.parse(init.body as string) : undefined
+      calls.push({ path: url, body })
+      if (url.endsWith('/api/search')) {
+        await gate
+        return jsonRes({ center: { lat: 1, lon: 1, displayName: 'X' }, leads: [ALPHA], source: 'overpass' })
+      }
+      return jsonRes({ results: [] })
+    }))
+    await user.click(btn)
+    const searches = () => calls.filter((c) => c.path.endsWith('/api/search'))
+    await waitFor(() => expect(searches()).toHaveLength(2))
+    expect(searches()[1].body).toEqual(firstBody)
+    expect(screen.getByText('Beta Bakery')).toBeTruthy()
+    expect(screen.getByText('Gamma Grill')).toBeTruthy()
+    release()
+    await waitFor(() => expect(screen.queryByText('Beta Bakery')).toBeNull())
+    expect(screen.queryByRole('button', { name: /full search/i })).toBeNull()
+    expect(screen.queryByText(/full map search was unavailable/)).toBeNull()
   })
 
   it('shows the empty state when zero businesses are found', async () => {
@@ -446,5 +478,66 @@ describe('CSV export', () => {
     expect(text).toContain('"Alpha Cafe"')
     expect(text).toContain('"Beta Bakery"')
     expect(text).not.toContain('Gamma Grill')
+  })
+})
+
+describe('Try full search again (edge cases)', () => {
+  const notice = 'The full map search was unavailable, so these results come from a simpler search.'
+  it('keeps the list and shows the red error when the retry fails, button still available', async () => {
+    const user = userEvent.setup()
+    stubApi({ source: 'nominatim', notice })
+    render(<App />)
+    await search(user)
+    await user.click(await screen.findByRole('button', { name: 'Try full search again' }))
+    await screen.findByText('Beta Bakery')
+    stubApi({ search: () => jsonRes({ error: 'Map data servers are busy. Please try again in a minute.' }, 502) })
+    await user.click(screen.getByRole('button', { name: 'Try full search again' }))
+    expect(await screen.findByText(/Map data servers are busy/)).toBeTruthy()
+    expect(screen.getByText('Beta Bakery')).toBeTruthy()
+    expect(screen.getByText(/full map search was unavailable/)).toBeTruthy()
+  })
+
+  it('disables the button and shows the spinner text while retrying', async () => {
+    const user = userEvent.setup()
+    stubApi({ source: 'nominatim', notice })
+    render(<App />)
+    await search(user)
+    await screen.findByRole('button', { name: 'Try full search again' })
+    let release!: () => void
+    const gate = new Promise<void>((r) => { release = r })
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url.endsWith('/api/search')) { await gate; return jsonRes({ center: { lat: 1, lon: 1, displayName: 'X' }, leads: [ALPHA], source: 'nominatim', notice }) }
+      return jsonRes({ results: [] })
+    }))
+    await user.click(screen.getByRole('button', { name: 'Try full search again' }))
+    const busy = await screen.findByRole('button', { name: /Trying full search/ })
+    expect((busy as HTMLButtonElement).disabled).toBe(true)
+    release()
+    // a retry that falls back again replaces the list and keeps notice + button
+    await waitFor(() => expect(screen.queryByText('Beta Bakery')).toBeNull())
+    const again = await screen.findByRole('button', { name: 'Try full search again' })
+    expect((again as HTMLButtonElement).disabled).toBe(false)
+    expect(screen.getByText(/full map search was unavailable/)).toBeTruthy()
+  })
+
+  it('shows no button for an overpass response that carries a notice', async () => {
+    stubApi({ source: 'overpass', notice })
+    const user = userEvent.setup()
+    render(<App />)
+    await search(user)
+    await screen.findByText(/full map search was unavailable/)
+    expect(screen.queryByRole('button', { name: /full search/i })).toBeNull()
+  })
+
+  it('clears a selected lead that is gone after the retry', async () => {
+    const user = userEvent.setup()
+    stubApi({ source: 'nominatim', notice })
+    render(<App />)
+    await search(user)
+    await user.click(await screen.findByText('Beta Bakery'))
+    stubApi({ leads: [ALPHA], source: 'overpass' })
+    await user.click(screen.getByRole('button', { name: 'Try full search again' }))
+    await waitFor(() => expect(screen.queryByText('Beta Bakery')).toBeNull())
+    expect(screen.getByText('Alpha Cafe')).toBeTruthy()
   })
 })

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { CATEGORIES } from '../data/categories'
-import { OVERPASS_MIRRORS, buildOverpassQuery, detectCategory, formatAddress, parseOverpass } from './overpass'
+import { OVERPASS_MIRRORS, buildOverpassQuery, detectCategory, formatAddress, parseOverpass, parseOverpassUrls, parseRetryAfter } from './overpass'
 
 const center = { lat: 30.27, lon: -97.74 }
 
@@ -19,9 +19,46 @@ describe('buildOverpassQuery', () => {
     const q = buildOverpassQuery(1, 2, 1, 'any', 10)
     for (const c of CATEGORIES) for (const s of c.selectors) expect(q).toContain(`nwr${s}["name"]`)
   })
-  it('lists three mirrors in order', () => {
-    expect(OVERPASS_MIRRORS[0]).toContain('overpass-api.de')
-    expect(OVERPASS_MIRRORS).toHaveLength(3)
+  it('lists four mirrors in order', () => {
+    expect(OVERPASS_MIRRORS.map((u) => new URL(u).host)).toEqual([
+      'overpass-api.de', 'maps.mail.ru', 'overpass.kumi.systems', 'overpass.private.coffee',
+    ])
+  })
+})
+
+describe('parseOverpassUrls', () => {
+  const defaults = [...OVERPASS_MIRRORS]
+  it('returns the defaults for unset, blank, commas-only or invalid input', () => {
+    expect(parseOverpassUrls(undefined)).toEqual(defaults)
+    expect(parseOverpassUrls('   ')).toEqual(defaults)
+    expect(parseOverpassUrls(' , ,')).toEqual(defaults)
+    expect(parseOverpassUrls('http://a.example/api, not a url')).toEqual(defaults)
+  })
+  it('drops http and invalid entries, trims, and removes duplicates', () => {
+    expect(parseOverpassUrls(' https://a.example/x , http://b.example/y,nope,https://a.example/x,https://c.example/z '))
+      .toEqual(['https://a.example/x', 'https://c.example/z'])
+  })
+  it('keeps at most 6 entries', () => {
+    const raw = Array.from({ length: 8 }, (_, i) => `https://m${i}.example/api`).join(',')
+    expect(parseOverpassUrls(raw)).toEqual(Array.from({ length: 6 }, (_, i) => `https://m${i}.example/api`))
+  })
+})
+
+describe('parseRetryAfter', () => {
+  const now = Date.parse('2026-01-01T00:00:00Z')
+  it('reads seconds', () => {
+    expect(parseRetryAfter('2', now)).toBe(2000)
+    expect(parseRetryAfter(' 0 ', now)).toBe(0)
+  })
+  it('reads HTTP dates (future and past)', () => {
+    expect(parseRetryAfter('Thu, 01 Jan 2026 00:00:05 GMT', now)).toBe(5000)
+    expect(parseRetryAfter('Wed, 31 Dec 2025 23:00:00 GMT', now)).toBe(0)
+  })
+  it('returns null for junk, blank and null', () => {
+    expect(parseRetryAfter('soon', now)).toBeNull()
+    expect(parseRetryAfter('-3', now)).toBeNull()
+    expect(parseRetryAfter('', now)).toBeNull()
+    expect(parseRetryAfter(null, now)).toBeNull()
   })
 })
 

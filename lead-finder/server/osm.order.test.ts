@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { NOMINATIM_FORBIDDEN, geocode, searchBusinesses } from './osm'
+import { NOMINATIM_FORBIDDEN, clearOverpassCache, geocode, searchBusinesses } from './osm'
 
 const okJson = (data: unknown) => new Response(JSON.stringify(data), { status: 200, headers: { 'content-type': 'application/json' } })
 const geo = [{ lat: '30.27', lon: '-97.74', display_name: 'Austin, TX' }]
@@ -11,7 +11,7 @@ let calls: string[]
 let n = 0
 const loc = () => `Order Town ${++n}`
 const sleep = async () => {}
-beforeEach(() => { calls = []; delete process.env.LEADS_CONTACT_EMAIL })
+beforeEach(() => { calls = []; clearOverpassCache(); delete process.env.LEADS_CONTACT_EMAIL })
 afterEach(() => { vi.unstubAllGlobals() })
 
 // Overpass mirrors fail; Nominatim answers by term (the q= parameter is "<term> in <location>" or similar).

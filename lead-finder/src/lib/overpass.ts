@@ -1,12 +1,44 @@
 import { CATEGORIES, getCategory } from '../data/categories.js'
 import { distanceKm, osmUrl } from './geo.js'
 import type { CategoryId, Lead } from './types.js'
+import { isBlockedHostname } from './url.js'
 
 export const OVERPASS_MIRRORS = [
   'https://overpass-api.de/api/interpreter',
-  'https://overpass.kumi.systems/api/interpreter',
   'https://maps.mail.ru/osm/tools/overpass/api/interpreter',
+  'https://overpass.kumi.systems/api/interpreter',
+  'https://overpass.private.coffee/api/interpreter',
 ] as const
+
+// Comma-separated list of https URLs -> mirror list (defaults when nothing valid is given).
+export function parseOverpassUrls(raw: string | undefined): string[] {
+  const out: string[] = []
+  for (const part of (raw ?? '').split(',')) {
+    const s = part.trim()
+    if (!s) continue
+    try {
+      const u = new URL(s)
+      if (u.protocol !== 'https:') continue
+      if (u.username || u.password) continue
+      if (isBlockedHostname(u.hostname)) continue
+    } catch {
+      continue
+    }
+    if (!out.includes(s)) out.push(s)
+  }
+  return out.length > 0 ? out.slice(0, 6) : [...OVERPASS_MIRRORS]
+}
+
+// Retry-After header (seconds or HTTP date) -> milliseconds, or null when missing/unreadable.
+export function parseRetryAfter(header: string | null, now: number): number | null {
+  const v = header?.trim()
+  if (!v) return null
+  if (/^\d+$/.test(v)) return Number(v) * 1000
+  if (!/[a-z]/i.test(v)) return null
+  const t = Date.parse(v)
+  if (Number.isNaN(t)) return null
+  return Math.max(0, t - now)
+}
 
 export function buildOverpassQuery(lat: number, lon: number, radiusKm: number, category: CategoryId, limit: number): string {
   const def = getCategory(category) ?? CATEGORIES[0]

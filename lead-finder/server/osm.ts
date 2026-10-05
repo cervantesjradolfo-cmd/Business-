@@ -2,11 +2,11 @@
 import { getCategory } from '../src/data/categories.js'
 import { dedupeLeads, finalizeLeads } from '../src/lib/leads.js'
 import { buildGeocodeUrl, buildNominatimSearchUrl, parseGeocode, parseNominatimSearch } from '../src/lib/nominatim.js'
-import { OVERPASS_MIRRORS, buildOverpassQuery, parseOverpass } from '../src/lib/overpass.js'
-import type { Lead, SearchRequest, SearchResponse } from '../src/lib/types.js'
+import { buildOverpassQuery, parseOverpass, parseOverpassUrls, parseRetryAfter } from '../src/lib/overpass.js'
+import type { Lead, OverpassDiagnostic, SearchRequest, SearchResponse } from '../src/lib/types.js'
 import { contactEmail, fetchWithTimeout, userAgent } from './http.js'
 
-type Deps = { sleep?: (ms: number) => Promise<void> }
+type Deps = { sleep?: (ms: number) => Promise<void>; now?: () => number }
 type Center = { lat: number; lon: number; displayName: string }
 
 const realSleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms))
@@ -20,6 +20,22 @@ async function throttle(deps?: Deps) {
 
 const geocodeCache = new Map<string, Center | null>()
 const CACHE_MAX = 200
+
+export const SEARCH_BUDGET_MS = 50_000 // searchBusinesses returns by start + 50 s (10 s margin under maxDuration 60)
+export const FALLBACK_RESERVE_MS = 14_000 // time kept back for the Nominatim fallback
+export const MIRROR_TIMEOUT_MS = 25_000 // per mirror attempt
+const RETRY_AFTER_CAP_MS = 3_000
+const RETRY_DEFAULT_MS = 1_000 // when 429/504 has no usable Retry-After
+const MIN_ATTEMPT_MS = 5_000 // do not start (or retry) an attempt with less time than this left
+const OVERPASS_CACHE_TTL_MS = 10 * 60_000
+const overpassCache = new Map<string, { json: unknown; mirror: string; expiresAt: number }>()
+
+export function clearOverpassCache(): void {
+  overpassCache.clear()
+}
+
+export const OVERPASS_FALLBACK_NOTICE =
+  'The full map search was unavailable (the map servers did not answer in time), so these results come from a simpler search and may be incomplete.'
 
 const headers = () => ({ 'User-Agent': userAgent(), 'Accept-Language': 'en' })
 const emailParam = () => contactEmail() || undefined
@@ -45,33 +61,116 @@ export async function geocode(location: string, deps?: Deps): Promise<Center | n
   return found
 }
 
-export async function overpassSearch(query: string): Promise<{ json: unknown; mirror: string } | null> {
-  for (const mirror of OVERPASS_MIRRORS) {
+export async function overpassSearch(
+  query: string,
+  opts?: { deadline?: number; deps?: Deps },
+): Promise<{ ok: true; json: unknown; mirror: string } | { ok: false; diagnostics: OverpassDiagnostic[] }> {
+  const deps = opts?.deps
+  const now = deps?.now ?? Date.now
+  const sleep = deps?.sleep ?? realSleep
+  const deadline = opts?.deadline ?? now() + MIRROR_TIMEOUT_MS
+
+  const cached = overpassCache.get(query)
+  if (cached) {
+    if (now() < cached.expiresAt) return { ok: true, json: cached.json, mirror: cached.mirror }
+    overpassCache.delete(query)
+  }
+
+  const mirrors = parseOverpassUrls(process.env.OVERPASS_URLS)
+  const shared = new AbortController()
+
+  type Once =
+    | { kind: 'good'; json: unknown }
+    | { kind: 'retry'; status: number; retryAfter: string | null }
+    | { kind: 'fail'; outcome: Exclude<OverpassDiagnostic['outcome'], 'ok'>; status?: number }
+
+  async function once(mirror: string): Promise<Once> {
+    const timeoutMs = Math.min(MIRROR_TIMEOUT_MS, deadline - now())
+    if (timeoutMs < MIN_ATTEMPT_MS) return { kind: 'fail', outcome: 'timeout' }
     try {
       const res = await fetchWithTimeout(mirror, {
         method: 'POST',
         headers: { ...headers(), 'Content-Type': 'application/x-www-form-urlencoded' },
         body: `data=${encodeURIComponent(query)}`,
-        timeoutMs: 15000,
+        timeoutMs,
+        redirect: 'error',
+        signal: shared.signal,
       })
-      if (!res.ok) continue
-      const body = (await res.json()) as { elements?: unknown[]; remark?: string } | null
-      if (!body || typeof body !== 'object') continue
-      const count = Array.isArray(body.elements) ? body.elements.length : 0
-      if (body.remark && count === 0) continue
-      return { json: body, mirror }
-    } catch {
-      // try the next mirror
+      if (res.status === 429 || res.status === 504) {
+        return { kind: 'retry', status: res.status, retryAfter: res.headers.get('retry-after') }
+      }
+      if (res.status !== 200) return { kind: 'fail', outcome: 'http_error', status: res.status }
+      let body: { elements?: unknown; remark?: unknown } | null
+      try {
+        body = (await res.json()) as typeof body
+      } catch (err) {
+        if (err instanceof Error && err.name === 'TimeoutError') return { kind: 'fail', outcome: 'timeout' }
+        if (shared.signal.aborted) return { kind: 'fail', outcome: 'network_error' }
+        return { kind: 'fail', outcome: 'bad_response' }
+      }
+      if (!body || typeof body !== 'object' || !Array.isArray(body.elements)) return { kind: 'fail', outcome: 'bad_response' }
+      if (body.elements.length === 0 && body.remark) return { kind: 'fail', outcome: 'bad_response' }
+      return { kind: 'good', json: body }
+    } catch (err) {
+      const name = err instanceof Error ? err.name : ''
+      return { kind: 'fail', outcome: name === 'TimeoutError' ? 'timeout' : 'network_error' }
     }
   }
-  return null
+
+  async function attempt(mirror: string): Promise<{ json?: unknown; diag: Omit<OverpassDiagnostic, 'host'> }> {
+    let r: Once = await once(mirror)
+    let retried = false
+    if (r.kind === 'retry') {
+      const wait = Math.min(parseRetryAfter(r.retryAfter, now()) ?? RETRY_DEFAULT_MS, RETRY_AFTER_CAP_MS)
+      if (now() + wait + MIN_ATTEMPT_MS <= deadline) {
+        retried = true
+        await sleep(wait)
+        const second: Once = shared.signal.aborted ? { kind: 'fail', outcome: 'network_error' } : await once(mirror)
+        r = second.kind === 'retry' ? { kind: 'fail', outcome: 'http_error', status: second.status } : second
+      } else {
+        r = { kind: 'fail', outcome: 'http_error', status: r.status }
+      }
+    }
+    if (r.kind === 'good') return { json: r.json, diag: { outcome: 'ok', ...(retried ? { retried: true as const } : {}) } }
+    return {
+      diag: {
+        outcome: r.outcome,
+        ...(r.status !== undefined ? { status: r.status } : {}),
+        ...(retried ? { retried: true as const } : {}),
+      },
+    }
+  }
+
+  return new Promise((resolve) => {
+    const diagnostics: OverpassDiagnostic[] = mirrors.map((m) => ({ host: new URL(m).host, outcome: 'network_error' }))
+    let left = mirrors.length
+    let won = false
+    mirrors.forEach((mirror, i) => {
+      attempt(mirror)
+        .catch((): { json?: unknown; diag: Omit<OverpassDiagnostic, 'host'> } => ({ diag: { outcome: 'network_error' } }))
+        .then(({ json, diag }) => {
+          if (won) return
+          diagnostics[i] = { host: diagnostics[i].host, ...diag }
+          if (diag.outcome === 'ok') {
+            won = true
+            if (overpassCache.size >= CACHE_MAX) overpassCache.delete(overpassCache.keys().next().value as string)
+            overpassCache.set(query, { json, mirror, expiresAt: now() + OVERPASS_CACHE_TTL_MS })
+            shared.abort()
+            resolve({ ok: true, json, mirror })
+            return
+          }
+          if (--left === 0) resolve({ ok: false, diagnostics })
+        })
+    })
+    if (mirrors.length === 0) resolve({ ok: false, diagnostics })
+  })
 }
 
-export async function nominatimSearch(term: string, location: string, deps?: Deps): Promise<unknown> {
+export async function nominatimSearch(term: string, location: string, deps?: Deps, timeoutMs = 10000): Promise<unknown> {
   await throttle(deps)
   const res = await fetchWithTimeout(buildNominatimSearchUrl(term, location, emailParam()), {
     headers: headers(),
-    timeoutMs: 10000,
+    timeoutMs,
   })
   if (!res.ok) throw new Error(`Nominatim HTTP ${res.status}`)
   return res.json()
@@ -81,6 +180,8 @@ export async function searchBusinesses(
   req: SearchRequest,
   deps?: Deps,
 ): Promise<SearchResponse | { error: string; status: number }> {
+  const now = deps?.now ?? Date.now
+  const deadline = now() + SEARCH_BUDGET_MS
   let center: Center | null
   try {
     center = await geocode(req.location, deps)
@@ -91,10 +192,15 @@ export async function searchBusinesses(
   }
   if (!center) return { error: "Couldn't find that location. Try a city name or ZIP code.", status: 404 }
 
-  const found = await overpassSearch(buildOverpassQuery(center.lat, center.lon, req.radiusKm, req.category, req.limit))
-  if (found) {
-    return { center, leads: finalizeLeads(parseOverpass(found.json, center), req.limit), source: 'overpass' }
+  const op = await overpassSearch(buildOverpassQuery(center.lat, center.lon, req.radiusKm, req.category, req.limit), {
+    deadline: deadline - FALLBACK_RESERVE_MS,
+    deps,
+  })
+  if (op.ok) {
+    return { center, leads: finalizeLeads(parseOverpass(op.json, center), req.limit), source: 'overpass' }
   }
+  const diagnostics = op.diagnostics
+  console.warn('overpass unavailable', JSON.stringify(diagnostics))
 
   const def = getCategory(req.category)
   const terms = def?.nominatimTerms ?? []
@@ -103,9 +209,13 @@ export async function searchBusinesses(
     let found: Lead[] = []
     let lastErr: unknown
     let anyOk = false
+    let attempted = false
     for (const term of terms) {
+      const remaining = deadline - now()
+      if (remaining < 3000) break
+      attempted = true
       try {
-        const raw = await nominatimSearch(term, req.location, deps)
+        const raw = await nominatimSearch(term, req.location, deps, Math.min(10000, remaining - 1500))
         anyOk = true
         found = dedupeLeads([...found, ...parseNominatimSearch(raw, center, req.radiusKm)])
       } catch (err) {
@@ -113,6 +223,7 @@ export async function searchBusinesses(
       }
       if (found.length >= req.limit) break
     }
+    if (!attempted) throw new Error('No time left for the Nominatim fallback')
     if (!anyOk) throw lastErr
     // "hairdresser" returns both salons and barbers: split them by name/tag.
     if (req.category === 'barbers') found = found.filter((l) => l.categoryId === 'barbers')
@@ -121,7 +232,8 @@ export async function searchBusinesses(
       center,
       leads: finalizeLeads(found, req.limit),
       source: 'nominatim',
-      notice: 'Map servers were busy, so results came from a simpler search and may be incomplete.',
+      notice: OVERPASS_FALLBACK_NOTICE,
+      diagnostics,
     }
   } catch (err) {
     console.error('nominatim fallback error', err)

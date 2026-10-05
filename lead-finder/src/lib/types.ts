@@ -80,11 +80,18 @@ export type Filters = { minScore: number; noWebsiteOnly: boolean; hasPhone: bool
 
 // API contracts (all JSON; errors are { error: string } with 4xx/5xx)
 export type SearchRequest = { location: string; category: CategoryId; radiusKm: number; limit: number }
+export type OverpassDiagnostic = {
+  host: string // URL host only, e.g. 'overpass-api.de' (never the full URL or query)
+  outcome: 'ok' | 'timeout' | 'http_error' | 'network_error' | 'bad_response'
+  status?: number // set only for 'http_error'
+  retried?: true // set when the mirror was retried after 429/504
+}
 export type SearchResponse = {
   center: { lat: number; lon: number; displayName: string }
   leads: Lead[]
   source: 'overpass' | 'nominatim'
   notice?: string
+  diagnostics?: OverpassDiagnostic[] // only on source 'nominatim' (Overpass failed)
 }
 export type AuditRequest = { leads: { id: string; website: string }[] } // 1..10 items
 export type AuditResponse = { results: AuditResult[] }

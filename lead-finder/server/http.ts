@@ -32,6 +32,7 @@ export function json(data: unknown, status = 200): Response {
 }
 
 export async function fetchWithTimeout(url: string, init: RequestInit & { timeoutMs: number }): Promise<Response> {
-  const { timeoutMs, ...rest } = init
-  return fetch(url, { ...rest, signal: AbortSignal.timeout(timeoutMs) })
+  const { timeoutMs, signal, ...rest } = init
+  const timeout = AbortSignal.timeout(timeoutMs)
+  return fetch(url, { ...rest, signal: signal ? AbortSignal.any([signal, timeout]) : timeout })
 }

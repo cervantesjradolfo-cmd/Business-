@@ -18,6 +18,7 @@ import Header from './components/Header'
 import LeadDetail from './components/LeadDetail'
 import LeadList from './components/LeadList'
 import ProgressBar from './components/ProgressBar'
+import SearchNotice from './components/SearchNotice'
 import SearchForm from './components/SearchForm'
 import SenderSettings from './components/SenderSettings'
 
@@ -41,6 +42,7 @@ export default function App() {
   const [phase, setPhase] = useState<Phase>('idle')
   const [progress, setProgress] = useState({ done: 0, total: 0 })
   const [notice, setNotice] = useState<string | undefined>()
+  const [source, setSource] = useState<'overpass' | 'nominatim' | undefined>()
   const [error, setError] = useState<string | undefined>()
   const [mode, setMode] = useState<'live' | 'demo'>('live')
   const [tab, setTab] = useState<'results' | 'saved'>('results')
@@ -53,6 +55,7 @@ export default function App() {
   const { saved, save, remove, setStatus, setNotes, setPitch } = useSavedLeads()
   const [sender, setSender] = useSender()
   const runRef = useRef<AbortController | null>(null)
+  const lastReqRef = useRef<SearchRequest | null>(null)
   const requested = useRef<Set<string>>(new Set())
 
   // ---- lists ----
@@ -69,24 +72,33 @@ export default function App() {
   const savedCount = Object.keys(saved).length
 
   // ---- search ----
-  const runSearch = useCallback(async (req: SearchRequest) => {
+  const runSearch = useCallback(async (req: SearchRequest, opts?: { keepResults?: boolean }) => {
+    const keep = !!opts?.keepResults
+    lastReqRef.current = req
     runRef.current?.abort()
     const ctrl = new AbortController()
     runRef.current = ctrl
     const live = () => runRef.current === ctrl && !ctrl.signal.aborted
     setPhase('searching')
     setError(undefined)
-    setNotice(undefined)
-    setLeads([])
-    setAudits({})
-    setPending(new Set())
-    setSelectedId(undefined)
+    if (!keep) {
+      setNotice(undefined)
+      setSource(undefined)
+      setLeads([])
+      setAudits({})
+      setPending(new Set())
+      setSelectedId(undefined)
+    }
     setProgress({ done: 0, total: 0 })
     try {
       const res = await searchLeads(req, ctrl.signal)
       if (!live()) return
       setLeads(res.leads)
       setNotice(res.notice)
+      setSource(res.source)
+      setAudits({})
+      setPending(new Set())
+      if (keep) setSelectedId((id) => (id && res.leads.some((l) => l.id === id) ? id : undefined))
       setTab('results')
       const withSite = res.leads.filter((l) => l.website?.trim())
       setPending(new Set(withSite.map((l) => l.id)))
@@ -121,6 +133,10 @@ export default function App() {
     }
   }, [])
 
+  const retryFull = () => {
+    if (lastReqRef.current) void runSearch(lastReqRef.current, { keepResults: true })
+  }
+
   function enterDemo() {
     runRef.current?.abort()
     runRef.current = null
@@ -129,6 +145,7 @@ export default function App() {
     setAudits(DEMO_AUDITS)
     setPending(new Set())
     setNotice(undefined)
+    setSource(undefined)
     setError(undefined)
     setSelectedId(undefined)
     setTab('results')
@@ -139,6 +156,7 @@ export default function App() {
     setMode('live')
     setLeads([])
     setAudits({})
+    setSource(undefined)
     setSelectedId(undefined)
     setPhase('idle')
   }
@@ -240,12 +258,17 @@ export default function App() {
         canExport={visible.length > 0} onExport={exportCsv} onSettings={() => setSettingsOpen(true)}
       />
       <main className="mx-auto w-full max-w-7xl flex-1 space-y-3 px-4 py-4">
-        <SearchForm onSearch={runSearch} searching={searching} demo={mode === 'demo'} />
+        <SearchForm onSearch={(r) => void runSearch(r)} searching={searching} demo={mode === 'demo'} />
         {searching && <ProgressBar phase={phase === 'searching' ? 'searching' : 'auditing'} done={progress.done} total={progress.total} />}
         {phase === 'unavailable' && <ApiNotice kind="unavailable" onDemo={enterDemo} />}
         {phase === 'error' && <ApiNotice kind="error" message={error} />}
         {notice && tab === 'results' && (
-          <p role="status" className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">{notice}</p>
+          <SearchNotice
+            message={notice}
+            onRetry={source === 'nominatim' ? retryFull : undefined}
+            retrying={phase === 'searching' && !!notice}
+            disabled={searching || mode === 'demo'}
+          />
         )}
 
         {(allScored.length > 0 || tab === 'saved') && <Filters filters={filters} onChange={setFilters} shown={visible.length} total={allScored.length} chainCount={tab === 'results' ? chainCount : 0} />}

@@ -1,6 +1,6 @@
 // @vitest-environment node
-import { afterEach, describe, expect, it } from 'vitest'
-import { checkAccess, userAgent } from './http'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { checkAccess, fetchWithTimeout, userAgent } from './http'
 
 const saved = process.env.APP_ACCESS_KEY
 afterEach(() => {
@@ -43,5 +43,18 @@ describe('userAgent', () => {
   it('includes the configured e-mail', () => {
     process.env.LEADS_CONTACT_EMAIL = 'me@mybiz.test'
     expect(userAgent()).toContain('contact: me@mybiz.test')
+  })
+})
+
+describe('fetchWithTimeout', () => {
+  afterEach(() => { vi.unstubAllGlobals() })
+  it('rejects when the caller signal is already aborted', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (_u: string, init?: RequestInit) => {
+      init?.signal?.throwIfAborted()
+      return new Response('ok')
+    }))
+    const ctrl = new AbortController()
+    ctrl.abort()
+    await expect(fetchWithTimeout('https://x.example/', { timeoutMs: 1000, signal: ctrl.signal })).rejects.toThrow()
   })
 })
