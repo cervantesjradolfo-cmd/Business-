@@ -1,9 +1,9 @@
 // POST /api/pitch: write a cold email, text and call opener. Uses Claude when
 // ANTHROPIC_API_KEY is set, otherwise (or on any error) the template.
-import { buildTemplatePitch } from '../src/lib/pitch'
-import { parsePitchRequest } from '../src/lib/validate'
-import { checkAccess, json } from '../server/http'
-import { aiPitch } from '../server/ai'
+import { buildTemplatePitch } from '../src/lib/pitch.js'
+import { parsePitchRequest } from '../src/lib/validate.js'
+import { checkAccess, json } from '../server/http.js'
+import { aiPitch } from '../server/ai.js'
 
 export async function POST(request: Request): Promise<Response> {
   const denied = checkAccess(request)

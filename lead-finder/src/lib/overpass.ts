@@ -1,6 +1,6 @@
-import { CATEGORIES, getCategory } from '../data/categories'
-import { distanceKm, osmUrl } from './geo'
-import type { CategoryId, Lead } from './types'
+import { CATEGORIES, getCategory } from '../data/categories.js'
+import { distanceKm, osmUrl } from './geo.js'
+import type { CategoryId, Lead } from './types.js'
 
 export const OVERPASS_MIRRORS = [
   'https://overpass-api.de/api/interpreter',

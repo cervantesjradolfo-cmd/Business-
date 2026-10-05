@@ -1,10 +1,10 @@
 // AI-written pitches (optional). Falls back to the template in src/lib/pitch.ts when there is
 // no ANTHROPIC_API_KEY or anything goes wrong.
 import Anthropic from '@anthropic-ai/sdk'
-import { PRICING } from '../src/data/pricing'
-import { GAP_DEFS } from '../src/lib/gaps'
-import { finalizeAiPitch } from '../src/lib/pitch'
-import type { Pitch, PitchRequest } from '../src/lib/types'
+import { PRICING } from '../src/data/pricing.js'
+import { GAP_DEFS } from '../src/lib/gaps.js'
+import { finalizeAiPitch } from '../src/lib/pitch.js'
+import type { Pitch, PitchRequest } from '../src/lib/types.js'
 
 const SYSTEM_PROMPT = `You are a friendly local-business consultant writing cold outreach to a small business owner.
 - Mention the business by name and its top 2-3 gaps, in plain words.

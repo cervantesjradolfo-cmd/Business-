@@ -1,7 +1,7 @@
 // POST /api/search: geocode a location and find businesses nearby (OpenStreetMap).
-import { parseSearchRequest } from '../src/lib/validate'
-import { checkAccess, json } from '../server/http'
-import { searchBusinesses } from '../server/osm'
+import { parseSearchRequest } from '../src/lib/validate.js'
+import { checkAccess, json } from '../server/http.js'
+import { searchBusinesses } from '../server/osm.js'
 
 export async function POST(request: Request): Promise<Response> {
   const denied = checkAccess(request)

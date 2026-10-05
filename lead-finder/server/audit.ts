@@ -1,9 +1,9 @@
 // Website audit: fetches a homepage safely (no private addresses, bounded time and size).
-import { detectSiteGaps } from '../src/lib/gaps'
-import { normalizeWebsite } from '../src/lib/url'
-import type { AuditResult } from '../src/lib/types'
-import { contactEmail } from './http'
-import { Blocked, safeGet } from './safeRequest'
+import { detectSiteGaps } from '../src/lib/gaps.js'
+import { normalizeWebsite } from '../src/lib/url.js'
+import type { AuditResult } from '../src/lib/types.js'
+import { contactEmail } from './http.js'
+import { Blocked, safeGet } from './safeRequest.js'
 
 const MAX_BYTES = 1.5 * 1024 * 1024
 const MAX_REDIRECTS = 5

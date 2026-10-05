@@ -20,6 +20,11 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
+// Tolerate values pasted with surrounding spaces, quotes or <angle brackets>.
+const clean = (value) => (value || '').trim().replace(/^[<"']+|[>"']+$/g, '').trim()
+for (const key of ['VERCEL_TOKEN', 'APP_ACCESS_KEY', 'LEADS_CONTACT_EMAIL', 'ANTHROPIC_API_KEY']) {
+  if (process.env[key] != null) process.env[key] = clean(process.env[key])
+}
 const token = process.env.VERCEL_TOKEN
 const project = process.env.VERCEL_PROJECT || 'lead-finder'
 const scope = process.env.VERCEL_SCOPE // optional team slug
@@ -29,9 +34,16 @@ if (!token) {
   process.exit(1)
 }
 
+// The token goes to the CLI through the environment, never argv, so a failed command
+// can't print it. Errors are reported without the command line for the same reason.
 const cli = (args, input) => {
-  const full = ['--yes', 'vercel@latest', ...args, '--token', token, ...(scope ? ['--scope', scope] : [])]
-  return execFileSync('npx', full, { cwd: root, input, encoding: 'utf8', stdio: [input == null ? 'ignore' : 'pipe', 'pipe', 'inherit'] }).trim()
+  const full = ['--yes', 'vercel@latest', ...args, ...(scope ? ['--scope', scope] : [])]
+  try {
+    return execFileSync('npx', full, { cwd: root, input, encoding: 'utf8', env: { ...process.env, VERCEL_TOKEN: token }, stdio: [input == null ? 'ignore' : 'pipe', 'pipe', 'inherit'] }).trim()
+  } catch (err) {
+    console.error(`vercel ${args[0]} failed (exit ${err.status ?? 'unknown'}); see the Vercel CLI output above.`)
+    process.exit(1)
+  }
 }
 const api = async (method, path, body) => {
   const url = new URL(`https://api.vercel.com${path}`)
@@ -48,7 +60,9 @@ const link = JSON.parse(readFileSync(join(root, '.vercel', 'project.json'), 'utf
 if (link.orgId?.startsWith('team_') && !process.env.VERCEL_TEAM_ID) process.env.VERCEL_TEAM_ID = link.orgId
 
 console.log('Turning on Vercel Authentication (only you can open the site)…')
-await api('PATCH', `/v9/projects/${link.projectId}`, { ssoProtection: { deploymentType: 'all_except_custom_domains' } })
+// "all", not "all_except_custom_domains": the standard setting leaves the production
+// domains (e.g. lead-finder-xyz.vercel.app) public.
+await api('PATCH', `/v9/projects/${link.projectId}`, { ssoProtection: { deploymentType: 'all' } })
 
 const existing = await api('GET', `/v9/projects/${link.projectId}/env`)
 const has = (key) => (existing.envs || []).some((e) => e.key === key)
@@ -57,24 +71,41 @@ const setEnv = async (key, value) => {
   await api('POST', `/v10/projects/${link.projectId}/env`, { key, value, type: 'encrypted', target: ['production', 'preview'] })
 }
 
-let accessKey = process.env.APP_ACCESS_KEY
-if (accessKey) await setEnv('APP_ACCESS_KEY', accessKey)
-else if (!has('APP_ACCESS_KEY')) { accessKey = randomBytes(18).toString('base64url'); await setEnv('APP_ACCESS_KEY', accessKey) }
+let generatedKey
+if (process.env.APP_ACCESS_KEY) await setEnv('APP_ACCESS_KEY', process.env.APP_ACCESS_KEY)
+else if (!has('APP_ACCESS_KEY')) { generatedKey = randomBytes(18).toString('base64url'); await setEnv('APP_ACCESS_KEY', generatedKey) }
 if (process.env.LEADS_CONTACT_EMAIL) await setEnv('LEADS_CONTACT_EMAIL', process.env.LEADS_CONTACT_EMAIL)
 else if (!has('LEADS_CONTACT_EMAIL')) console.warn('Warning: LEADS_CONTACT_EMAIL is not set. OpenStreetMap may refuse searches until you set it.')
 if (process.env.ANTHROPIC_API_KEY) await setEnv('ANTHROPIC_API_KEY', process.env.ANTHROPIC_API_KEY)
 
 console.log('Deploying…')
-const url = cli(['deploy', '--prod', '--yes']).split('\n').filter((l) => l.startsWith('https://')).pop()
-if (!url) throw new Error('Deploy finished but no URL was printed.')
+let url = cli(['deploy', '--prod', '--yes']).split('\n').map((l) => l.trim()).filter((l) => l.startsWith('https://')).pop()
+// Newer CLIs print the URL only to the terminal (stderr), so ask the API for the latest production deployment.
+if (!url) {
+  const { deployments = [] } = await api('GET', `/v6/deployments?projectId=${link.projectId}&target=production&limit=1`)
+  if (deployments[0]?.url) url = `https://${deployments[0].url}`
+}
+if (!url) throw new Error('Deploy finished but its URL could not be found.')
 
-const probe = await fetch(url, { redirect: 'manual' })
-const locked = probe.status === 401 || probe.status === 403 || (probe.status >= 300 && probe.status < 400 && /vercel\.com\/(login|sso)/.test(probe.headers.get('location') || ''))
+// Check the deployment URL and every production domain: each must refuse a signed-out visitor.
+const { domains = [] } = await api('GET', `/v9/projects/${link.projectId}/domains`)
+const urls = [url, ...domains.map((d) => `https://${d.name}`)]
+const refused = (res) => res.status === 401 || res.status === 403 || (res.status >= 300 && res.status < 400 && /vercel\.com\/(login|sso)/.test(res.headers.get('location') || ''))
+const open = []
+for (const target of urls) {
+  const page = await fetch(target, { redirect: 'manual' })
+  const search = await fetch(`${target}/api/search`, { method: 'POST', redirect: 'manual', headers: { 'Content-Type': 'application/json' }, body: '{}' })
+  if (!refused(page)) open.push(`${target} (HTTP ${page.status})`)
+  if (!refused(search)) open.push(`${target}/api/search (HTTP ${search.status})`)
+}
+const locked = open.length === 0
+const siteUrl = domains[0] ? `https://${domains[0].name}` : url
 
 console.log('')
-console.log(`Lead Finder is live: ${url}`)
-console.log(locked ? 'Private: signed-out visitors are refused. Open it while signed in to Vercel.' : `WARNING: a signed-out request got HTTP ${probe.status}. Check Deployment Protection in the Vercel dashboard.`)
-if (accessKey) console.log(`Access key (enter it under "Your details"; shown once): ${accessKey}`)
+console.log(`Lead Finder is live: ${siteUrl}`)
+console.log(locked ? 'Private: signed-out visitors are refused. Open it while signed in to Vercel.' : `WARNING: these answered a signed-out request: ${open.join(', ')}. Check Deployment Protection in the Vercel dashboard.`)
+if (generatedKey) console.log(`Access key (enter it under "Your details"; shown once): ${generatedKey}`)
+else if (process.env.APP_ACCESS_KEY) console.log('Access key: set from your APP_ACCESS_KEY (not printed).')
 else console.log('Access key: unchanged (already set on Vercel).')
 if (existsSync(join(root, '.vercel'))) console.log('The .vercel/ folder links this checkout to the project; it is git-ignored.')
 process.exit(locked ? 0 : 2)

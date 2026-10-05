@@ -1,7 +1,7 @@
 // Outreach templates. Edit the wording here (the AI version lives in server/ai.ts).
-import { PRICING } from '../data/pricing'
-import { GAP_DEFS } from './gaps'
-import type { Pitch, PitchRequest, Sender, ServiceId } from './types'
+import { PRICING } from '../data/pricing.js'
+import { GAP_DEFS } from './gaps.js'
+import type { Pitch, PitchRequest, Sender, ServiceId } from './types.js'
 
 export const OPT_OUT_EMAIL = "If you'd rather not hear from me, just reply \"no thanks\" and I won't email again."
 export const OPT_OUT_SMS = 'Reply STOP to opt out.'

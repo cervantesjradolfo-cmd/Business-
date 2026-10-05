@@ -1,10 +1,10 @@
 // OpenStreetMap network code: Nominatim (geocoding + fallback search) and Overpass.
-import { getCategory } from '../src/data/categories'
-import { dedupeLeads, finalizeLeads } from '../src/lib/leads'
-import { buildGeocodeUrl, buildNominatimSearchUrl, parseGeocode, parseNominatimSearch } from '../src/lib/nominatim'
-import { OVERPASS_MIRRORS, buildOverpassQuery, parseOverpass } from '../src/lib/overpass'
-import type { Lead, SearchRequest, SearchResponse } from '../src/lib/types'
-import { contactEmail, fetchWithTimeout, userAgent } from './http'
+import { getCategory } from '../src/data/categories.js'
+import { dedupeLeads, finalizeLeads } from '../src/lib/leads.js'
+import { buildGeocodeUrl, buildNominatimSearchUrl, parseGeocode, parseNominatimSearch } from '../src/lib/nominatim.js'
+import { OVERPASS_MIRRORS, buildOverpassQuery, parseOverpass } from '../src/lib/overpass.js'
+import type { Lead, SearchRequest, SearchResponse } from '../src/lib/types.js'
+import { contactEmail, fetchWithTimeout, userAgent } from './http.js'
 
 type Deps = { sleep?: (ms: number) => Promise<void> }
 type Center = { lat: number; lon: number; displayName: string }

@@ -1,6 +1,6 @@
 // What Lead Finder looks for on a business, in plain words, with weights and the services
 // each gap suggests. Edit labels, weights and pitch phrases here.
-import type { GapId, Lead, ServiceId, SiteGapId } from './types'
+import type { GapId, Lead, ServiceId, SiteGapId } from './types.js'
 
 export type GapDef = {
   id: GapId

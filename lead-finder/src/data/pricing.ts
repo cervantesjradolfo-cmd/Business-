@@ -1,7 +1,7 @@
 // Edit these prices to match yours.
 // One entry per service Lead Finder can recommend. The "estimated deal value" on each
 // lead is the sum of min and max (USD) over its recommended services.
-import type { ServiceId } from '../lib/types'
+import type { ServiceId } from '../lib/types.js'
 
 export const PRICING: Record<ServiceId, { label: string; description: string; min: number; max: number }> = {
   website: {

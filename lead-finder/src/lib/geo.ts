@@ -1,4 +1,4 @@
-import type { Lead } from './types'
+import type { Lead } from './types.js'
 
 export function distanceKm(a: { lat: number; lon: number }, b: { lat: number; lon: number }): number {
   const R = 6371.0088

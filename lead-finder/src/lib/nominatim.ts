@@ -1,6 +1,6 @@
-import { distanceKm, osmUrl } from './geo'
-import { detectCategory, pickBrand, pickContact } from './overpass'
-import type { Lead } from './types'
+import { distanceKm, osmUrl } from './geo.js'
+import { detectCategory, pickBrand, pickContact } from './overpass.js'
+import type { Lead } from './types.js'
 
 export const NOMINATIM_BASE = 'https://nominatim.openstreetmap.org'
 

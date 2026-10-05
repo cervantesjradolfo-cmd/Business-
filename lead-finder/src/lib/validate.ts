@@ -1,7 +1,7 @@
-import { PRICING } from '../data/pricing'
-import { getCategory } from '../data/categories'
-import { GAP_DEFS } from './gaps'
-import type { AuditRequest, GapId, PitchRequest, SearchRequest, Sender, ServiceId, CategoryId } from './types'
+import { PRICING } from '../data/pricing.js'
+import { getCategory } from '../data/categories.js'
+import { GAP_DEFS } from './gaps.js'
+import type { AuditRequest, GapId, PitchRequest, SearchRequest, Sender, ServiceId, CategoryId } from './types.js'
 
 export type Parsed<T> = { ok: true; value: T } | { ok: false; error: string }
 const fail = (error: string): { ok: false; error: string } => ({ ok: false, error })

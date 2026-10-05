@@ -1,5 +1,5 @@
-import { distanceKm } from './geo'
-import type { Lead } from './types'
+import { distanceKm } from './geo.js'
+import type { Lead } from './types.js'
 
 function filled(l: Lead): number {
   return [l.address, l.city, l.phone, l.email, l.website, l.openingHours].filter(Boolean).length

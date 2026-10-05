@@ -1,7 +1,7 @@
 // The business categories offered in the search form.
 // `selectors` are OpenStreetMap (Overpass) tag filters. Add a category by adding an entry
 // here and its id to CategoryId in src/lib/types.ts. "Any business" is computed from the rest.
-import type { CategoryId } from '../lib/types'
+import type { CategoryId } from '../lib/types.js'
 
 export type CategoryDef = {
   id: CategoryId

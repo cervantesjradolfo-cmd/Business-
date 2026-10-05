@@ -8,7 +8,7 @@ import http from 'node:http'
 import https from 'node:https'
 import net from 'node:net'
 import { Readable } from 'node:stream'
-import { isBlockedHostname, isPrivateIp } from '../src/lib/url'
+import { isBlockedHostname, isPrivateIp } from '../src/lib/url.js'
 
 export class Blocked extends Error {}
 

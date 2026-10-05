@@ -1,7 +1,7 @@
 // POST /api/audit: check up to 10 business websites for gaps (homepage only).
-import { parseAuditRequest } from '../src/lib/validate'
-import { checkAccess, json } from '../server/http'
-import { auditWebsite, mapWithConcurrency } from '../server/audit'
+import { parseAuditRequest } from '../src/lib/validate.js'
+import { checkAccess, json } from '../server/http.js'
+import { auditWebsite, mapWithConcurrency } from '../server/audit.js'
 
 export async function POST(request: Request): Promise<Response> {
   const denied = checkAccess(request)
