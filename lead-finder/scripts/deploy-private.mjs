@@ -54,9 +54,17 @@ const api = async (method, path, body) => {
   return data
 }
 
-console.log(`Linking Vercel project "${project}"…`)
-cli(['link', '--yes', '--project', project])
-const link = JSON.parse(readFileSync(join(root, '.vercel', 'project.json'), 'utf8'))
+// Tokens scoped to a team can't look up their user, which `vercel link` needs. Passing
+// VERCEL_ORG_ID and VERCEL_PROJECT_ID skips the link; the CLI reads them from the environment.
+let link
+if (process.env.VERCEL_ORG_ID && process.env.VERCEL_PROJECT_ID) {
+  console.log(`Using Vercel project ${process.env.VERCEL_PROJECT_ID} from VERCEL_PROJECT_ID…`)
+  link = { orgId: process.env.VERCEL_ORG_ID, projectId: process.env.VERCEL_PROJECT_ID }
+} else {
+  console.log(`Linking Vercel project "${project}"…`)
+  cli(['link', '--yes', '--project', project])
+  link = JSON.parse(readFileSync(join(root, '.vercel', 'project.json'), 'utf8'))
+}
 if (link.orgId?.startsWith('team_') && !process.env.VERCEL_TEAM_ID) process.env.VERCEL_TEAM_ID = link.orgId
 
 console.log('Turning on Vercel Authentication (only you can open the site)…')
