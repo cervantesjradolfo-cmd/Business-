@@ -15,6 +15,7 @@ describe('Nominatim fallback terms', () => {
       auto_repair: ['car repair'],
       dentists: ['dentist'],
       fitness: ['martial arts', 'sports centre'],
+      drywall: [],
       trades: ['electrician', 'carpenter'],
       cleaning: ['dry cleaning', 'laundry'],
       party_rentals: [],

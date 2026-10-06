@@ -88,9 +88,9 @@ describe('multiple Nominatim terms', () => {
     const s = await searchBusinesses({ location: loc(), category: 'salons', radiusKm: 5, limit: 10 }, { sleep })
     expect('leads' in s && s.leads.map((l) => l.name)).toEqual(['Curl Studio'])
   })
-  it('law and party_rentals (no phrase) give 502 and make no Nominatim search request', async () => {
+  it('law, party_rentals and drywall (no phrase) give 502 and make no Nominatim search request', async () => {
     stub({})
-    for (const category of ['law', 'party_rentals'] as const) {
+    for (const category of ['law', 'party_rentals', 'drywall'] as const) {
       const r = await searchBusinesses({ location: loc(), category, radiusKm: 5, limit: 10 }, { sleep })
       expect(r).toMatchObject({ status: 502, error: 'Map data servers are busy. Please try again in a minute.' })
     }

@@ -45,14 +45,19 @@ export async function geocode(location: string, deps?: Deps): Promise<Center | n
   return found
 }
 
-export async function overpassSearch(query: string): Promise<{ json: unknown; mirror: string } | null> {
-  for (const mirror of OVERPASS_MIRRORS) {
+// All mirrors together get 45s, so with the 10s geocode a search stays under Vercel's 60s limit.
+// A slow category gets more time on the first mirror and the rest share what is left.
+const OVERPASS_BUDGET_MS = 45000
+
+export async function overpassSearch(query: string, firstTimeoutMs = 15000): Promise<{ json: unknown; mirror: string } | null> {
+  const restTimeoutMs = Math.floor((OVERPASS_BUDGET_MS - firstTimeoutMs) / (OVERPASS_MIRRORS.length - 1))
+  for (const [i, mirror] of OVERPASS_MIRRORS.entries()) {
     try {
       const res = await fetchWithTimeout(mirror, {
         method: 'POST',
         headers: { ...headers(), 'Content-Type': 'application/x-www-form-urlencoded' },
         body: `data=${encodeURIComponent(query)}`,
-        timeoutMs: 15000,
+        timeoutMs: i === 0 ? firstTimeoutMs : restTimeoutMs,
       })
       if (!res.ok) continue
       const body = (await res.json()) as { elements?: unknown[]; remark?: string } | null
@@ -91,12 +96,12 @@ export async function searchBusinesses(
   }
   if (!center) return { error: "Couldn't find that location. Try a city name or ZIP code.", status: 404 }
 
-  const found = await overpassSearch(buildOverpassQuery(center.lat, center.lon, req.radiusKm, req.category, req.limit))
+  const def = getCategory(req.category)
+  const found = await overpassSearch(buildOverpassQuery(center.lat, center.lon, req.radiusKm, req.category, req.limit), def?.overpassTimeoutMs)
   if (found) {
     return { center, leads: finalizeLeads(parseOverpass(found.json, center), req.limit), source: 'overpass' }
   }
 
-  const def = getCategory(req.category)
   const terms = def?.nominatimTerms ?? []
   try {
     if (terms.length === 0) throw new Error(`No Nominatim phrase for category ${req.category}`)

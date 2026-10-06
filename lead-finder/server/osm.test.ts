@@ -36,6 +36,16 @@ describe('overpassSearch', () => {
     expect(await overpassSearch('q')).toBeNull()
     expect(calls).toHaveLength(3)
   })
+  it('gives a slow query more time on the first mirror and keeps the total at 45s', async () => {
+    const timeout = vi.spyOn(AbortSignal, 'timeout')
+    stub(() => { throw new Error('down') })
+    await overpassSearch('q')
+    expect(timeout.mock.calls.map((c) => c[0])).toEqual([15000, 15000, 15000])
+    timeout.mockClear()
+    await overpassSearch('q', 25000)
+    expect(timeout.mock.calls.map((c) => c[0])).toEqual([25000, 10000, 10000])
+    timeout.mockRestore()
+  })
 })
 
 describe('searchBusinesses', () => {
