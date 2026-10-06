@@ -164,6 +164,20 @@ describe('searchBusinesses', () => {
     expect(sleep).toHaveBeenCalled()
     expect(sleep.mock.calls.at(-1)![0]).toBeGreaterThan(0)
   })
+  it('skips Overpass entirely when skipOverpass is set', async () => {
+    stub((url) => {
+      if (url.includes('extratags')) {
+        return okJson([{ osm_type: 'node', osm_id: 8, lat: '30.271', lon: '-97.741', category: 'amenity', type: 'cafe', name: 'Quick Cafe' }])
+      }
+      if (url.includes('nominatim')) return okJson(geo)
+      throw new Error('Overpass must not be called')
+    })
+    const r = await searchBusinesses({ location: 'Skip City', category: 'cafes', radiusKm: 5, limit: 10, skipOverpass: true }, { sleep: async () => {} })
+    expect('leads' in r && r.source).toBe('nominatim')
+    expect('leads' in r && r.leads[0].name).toBe('Quick Cafe')
+    expect('leads' in r && r.diagnostics).toEqual([])
+    expect(calls.every((u) => u.includes('nominatim'))).toBe(true)
+  })
   it('stops starting fallback terms when the time budget is used up', async () => {
     stub((url) => (url.includes('nominatim') ? okJson(geo) : new Response('no', { status: 500 })))
     let t = 0

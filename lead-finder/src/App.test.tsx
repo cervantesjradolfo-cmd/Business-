@@ -2,7 +2,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import App from './App'
+import { browserOverpassSearch } from './lib/overpassBrowser'
 import type { AuditResult, Lead, Pitch } from './lib/types'
+
+vi.mock('./lib/overpassBrowser', () => ({ browserOverpassSearch: vi.fn() }))
+const browserOverpass = vi.mocked(browserOverpassSearch)
 
 const mk = (n: number, p: Partial<Lead>): Lead => ({
   id: `osm:node/${n}`, osmType: 'node', osmId: n, osmUrl: `https://www.openstreetmap.org/node/${n}`,
@@ -40,7 +44,7 @@ async function search(user: ReturnType<typeof userEvent.setup>) {
   await user.click(screen.getByRole('button', { name: 'Search' }))
 }
 
-beforeEach(() => { window.localStorage.clear() })
+beforeEach(() => { window.localStorage.clear(); browserOverpass.mockReset().mockResolvedValue(null) })
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.restoreAllMocks() })
 
 describe('first run and search flow', () => {
@@ -110,7 +114,9 @@ describe('first run and search flow', () => {
     await user.click(btn)
     const searches = () => calls.filter((c) => c.path.endsWith('/api/search'))
     await waitFor(() => expect(searches()).toHaveLength(2))
-    expect(searches()[1].body).toEqual(firstBody)
+    expect(firstBody.skipOverpass).toBe(true)
+    const { skipOverpass: _skip, ...rest } = firstBody
+    expect(searches()[1].body).toEqual(rest)
     expect(screen.getByText('Beta Bakery')).toBeTruthy()
     expect(screen.getByText('Gamma Grill')).toBeTruthy()
     release()
@@ -539,5 +545,46 @@ describe('Try full search again (edge cases)', () => {
     await user.click(screen.getByRole('button', { name: 'Try full search again' }))
     await waitFor(() => expect(screen.queryByText('Beta Bakery')).toBeNull())
     expect(screen.getByText('Alpha Cafe')).toBeTruthy()
+  })
+})
+
+describe('Overpass from the browser', () => {
+  const notice = 'The full map search was unavailable, so these results come from a simpler search.'
+
+  it('asks the server to skip Overpass and uses the browser result when it answers', async () => {
+    browserOverpass.mockResolvedValue([GAMMA])
+    stubApi({ source: 'nominatim', notice, leads: [ALPHA, BETA] })
+    const user = userEvent.setup()
+    render(<App />)
+    await search(user)
+    expect(await screen.findByText('Gamma Grill')).toBeTruthy()
+    expect(screen.queryByText('Alpha Cafe')).toBeNull()
+    expect(screen.queryByText(/full map search was unavailable/)).toBeNull()
+    const sent = calls.find((c) => c.path.endsWith('/api/search'))!.body
+    expect(sent.skipOverpass).toBe(true)
+    expect(browserOverpass).toHaveBeenCalledTimes(1)
+    const [center, req] = browserOverpass.mock.calls[0]
+    expect(center).toEqual({ lat: 1, lon: 1, displayName: 'X' })
+    expect(req.skipOverpass).toBeUndefined()
+    expect(req.location).toBe('Austin')
+  })
+
+  it('keeps the simpler results and the notice when the browser cannot reach Overpass', async () => {
+    stubApi({ source: 'nominatim', notice, leads: [ALPHA] })
+    const user = userEvent.setup()
+    render(<App />)
+    await search(user)
+    expect(await screen.findByText(/full map search was unavailable/)).toBeTruthy()
+    expect(screen.getByText('Alpha Cafe')).toBeTruthy()
+    expect(browserOverpass).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not ask the browser when the server already used Overpass', async () => {
+    stubApi({ source: 'overpass' })
+    const user = userEvent.setup()
+    render(<App />)
+    await search(user)
+    expect(await screen.findByText('Alpha Cafe')).toBeTruthy()
+    expect(browserOverpass).not.toHaveBeenCalled()
   })
 })

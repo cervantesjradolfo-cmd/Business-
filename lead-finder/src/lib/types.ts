@@ -79,7 +79,13 @@ export type SavedLead = {
 export type Filters = { minScore: number; noWebsiteOnly: boolean; hasPhone: boolean; showChains: boolean }
 
 // API contracts (all JSON; errors are { error: string } with 4xx/5xx)
-export type SearchRequest = { location: string; category: CategoryId; radiusKm: number; limit: number }
+export type SearchRequest = {
+  location: string
+  category: CategoryId
+  radiusKm: number
+  limit: number
+  skipOverpass?: boolean // go straight to the Nominatim search; the browser asks Overpass itself
+}
 export type OverpassDiagnostic = {
   host: string // URL host only, e.g. 'overpass-api.de' (never the full URL or query)
   outcome: 'ok' | 'timeout' | 'http_error' | 'network_error' | 'bad_response'

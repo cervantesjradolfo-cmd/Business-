@@ -3,6 +3,7 @@ import { SearchX, Target, Bookmark } from 'lucide-react'
 import clsx from 'clsx'
 import { DEMO_AUDITS, DEMO_LEADS } from './data/demo'
 import { ApiUnavailableError, auditLeads, fetchPitch, searchLeads } from './lib/api'
+import { browserOverpassSearch } from './lib/overpassBrowser'
 import { csvFilename, leadsToCsv } from './lib/csv'
 import { applyFilters, sortLeads } from './lib/filters'
 import { toLead } from './lib/format'
@@ -72,7 +73,9 @@ export default function App() {
   const savedCount = Object.keys(saved).length
 
   // ---- search ----
-  const runSearch = useCallback(async (req: SearchRequest, opts?: { keepResults?: boolean }) => {
+  // A new search lets the server skip Overpass (often blocked from cloud servers) and asks it from the
+  // browser instead; "Try full search again" (fullServer) has the server try Overpass as well.
+  const runSearch = useCallback(async (req: SearchRequest, opts?: { keepResults?: boolean; fullServer?: boolean }) => {
     const keep = !!opts?.keepResults
     lastReqRef.current = req
     runRef.current?.abort()
@@ -91,8 +94,13 @@ export default function App() {
     }
     setProgress({ done: 0, total: 0 })
     try {
-      const res = await searchLeads(req, ctrl.signal)
+      let res = await searchLeads(opts?.fullServer ? req : { ...req, skipOverpass: true }, ctrl.signal)
       if (!live()) return
+      if (res.source === 'nominatim') {
+        const full = await browserOverpassSearch(res.center, req, { signal: ctrl.signal })
+        if (!live()) return
+        if (full) res = { center: res.center, leads: full, source: 'overpass' }
+      }
       setLeads(res.leads)
       setNotice(res.notice)
       setSource(res.source)
@@ -134,7 +142,7 @@ export default function App() {
   }, [])
 
   const retryFull = () => {
-    if (lastReqRef.current) void runSearch(lastReqRef.current, { keepResults: true })
+    if (lastReqRef.current) void runSearch(lastReqRef.current, { keepResults: true, fullServer: true })
   }
 
   function enterDemo() {

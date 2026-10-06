@@ -2,6 +2,13 @@ import { describe, expect, it } from 'vitest'
 import { parseAuditRequest, parsePitchRequest, parseSearchRequest } from './validate'
 
 describe('parseSearchRequest', () => {
+  it('passes skipOverpass through only when it is exactly true', () => {
+    const v = (x: unknown) => { const r = parseSearchRequest({ location: 'Austin', skipOverpass: x }); return r.ok ? r.value.skipOverpass : 'invalid' }
+    expect(v(true)).toBe(true)
+    expect(v('true')).toBeUndefined()
+    expect(v(1)).toBeUndefined()
+    expect(v(undefined)).toBeUndefined()
+  })
   it('applies defaults and trims', () => {
     expect(parseSearchRequest({ location: '  Austin ', category: 'cafes' })).toEqual({ ok: true, value: { location: 'Austin', category: 'cafes', radiusKm: 5, limit: 60 } })
   })

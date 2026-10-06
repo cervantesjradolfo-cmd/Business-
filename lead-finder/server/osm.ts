@@ -192,15 +192,18 @@ export async function searchBusinesses(
   }
   if (!center) return { error: "Couldn't find that location. Try a city name or ZIP code.", status: 404 }
 
-  const op = await overpassSearch(buildOverpassQuery(center.lat, center.lon, req.radiusKm, req.category, req.limit), {
-    deadline: deadline - FALLBACK_RESERVE_MS,
-    deps,
-  })
-  if (op.ok) {
-    return { center, leads: finalizeLeads(parseOverpass(op.json, center), req.limit), source: 'overpass' }
+  let diagnostics: OverpassDiagnostic[] = []
+  if (!req.skipOverpass) {
+    const op = await overpassSearch(buildOverpassQuery(center.lat, center.lon, req.radiusKm, req.category, req.limit), {
+      deadline: deadline - FALLBACK_RESERVE_MS,
+      deps,
+    })
+    if (op.ok) {
+      return { center, leads: finalizeLeads(parseOverpass(op.json, center), req.limit), source: 'overpass' }
+    }
+    diagnostics = op.diagnostics
+    console.warn('overpass unavailable', JSON.stringify(diagnostics))
   }
-  const diagnostics = op.diagnostics
-  console.warn('overpass unavailable', JSON.stringify(diagnostics))
 
   const def = getCategory(req.category)
   const terms = def?.nominatimTerms ?? []

@@ -26,6 +26,7 @@ export function parseSearchRequest(body: unknown): Parsed<SearchRequest> {
       category: category as CategoryId,
       radiusKm: clampNum(body.radiusKm, 1, 25, 5),
       limit: Math.round(clampNum(body.limit, 1, 200, 60)),
+      ...(body.skipOverpass === true ? { skipOverpass: true } : {}),
     },
   }
 }
