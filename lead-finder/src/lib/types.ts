@@ -2,7 +2,7 @@
 
 export type CategoryId =
   | 'any' | 'restaurants' | 'cafes' | 'salons' | 'barbers' | 'auto_repair' | 'dentists'
-  | 'fitness' | 'trades' | 'cleaning' | 'party_rentals' | 'retail' | 'real_estate'
+  | 'fitness' | 'drywall' | 'trades' | 'cleaning' | 'party_rentals' | 'retail' | 'real_estate'
   | 'law' | 'medical'
 export type ServiceId =
   | 'website' | 'online_booking' | 'ai_chat' | 'mobile_redesign' | 'seo_basics' | 'review_collection'

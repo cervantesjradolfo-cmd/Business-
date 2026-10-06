@@ -44,7 +44,7 @@ function humanise(v: string): string {
 }
 
 export function detectCategory(tags: Tags): { id: CategoryId | 'other'; label: string } {
-  const matches = CATEGORIES.filter((def) => def.id !== 'any' && def.selectors.some((s) => matchesSelector(s, tags)))
+  const matches = CATEGORIES.filter((def) => def.id !== 'any' && [...def.selectors, ...(def.nameSelectors ?? [])].some((s) => matchesSelector(s, tags)))
   // A hairdresser named "... Barber ..." matches both; the more specific barbers category wins.
   const hit = matches.find((d) => d.id === 'barbers') ?? matches[0]
   if (hit) return { id: hit.id, label: hit.singular }

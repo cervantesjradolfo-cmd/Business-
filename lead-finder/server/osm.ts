@@ -1,7 +1,7 @@
 // OpenStreetMap network code: Nominatim (geocoding + fallback search) and Overpass.
 import { getCategory } from '../src/data/categories.js'
 import { dedupeLeads, finalizeLeads } from '../src/lib/leads.js'
-import { buildGeocodeUrl, buildNominatimSearchUrl, parseGeocode, parseNominatimSearch } from '../src/lib/nominatim.js'
+import { buildGeocodeUrl, buildNominatimNameUrl, buildNominatimSearchUrl, parseGeocode, parseNominatimSearch } from '../src/lib/nominatim.js'
 import { OVERPASS_MIRRORS, buildOverpassQuery, parseOverpass } from '../src/lib/overpass.js'
 import type { Lead, SearchRequest, SearchResponse } from '../src/lib/types.js'
 import { contactEmail, fetchWithTimeout, userAgent } from './http.js'
@@ -77,6 +77,25 @@ export async function nominatimSearch(term: string, location: string, deps?: Dep
   return res.json()
 }
 
+// Name search for categories with nameSearchTerms. Returns null when every request failed.
+async function searchByName(req: SearchRequest, center: Center, deps?: Deps): Promise<Lead[] | null> {
+  const terms = getCategory(req.category)?.nameSearchTerms ?? []
+  let found: Lead[] = []
+  let anyOk = false
+  for (const term of terms) {
+    try {
+      await throttle(deps)
+      const res = await fetchWithTimeout(buildNominatimNameUrl(term, center, req.radiusKm, emailParam()), { headers: headers(), timeoutMs: 10000 })
+      if (!res.ok) throw new Error(`Nominatim HTTP ${res.status}`)
+      found = [...found, ...parseNominatimSearch(await res.json(), center, req.radiusKm).filter((l) => l.categoryId === req.category)]
+      anyOk = true
+    } catch (err) {
+      console.error('name search error', err)
+    }
+  }
+  return anyOk ? found : null
+}
+
 export async function searchBusinesses(
   req: SearchRequest,
   deps?: Deps,
@@ -91,12 +110,23 @@ export async function searchBusinesses(
   }
   if (!center) return { error: "Couldn't find that location. Try a city name or ZIP code.", status: 404 }
 
-  const found = await overpassSearch(buildOverpassQuery(center.lat, center.lon, req.radiusKm, req.category, req.limit))
+  const def = getCategory(req.category)
+  const [found, byName] = await Promise.all([
+    overpassSearch(buildOverpassQuery(center.lat, center.lon, req.radiusKm, req.category, req.limit)),
+    def?.nameSearchTerms ? searchByName(req, center, deps) : Promise.resolve(null),
+  ])
   if (found) {
-    return { center, leads: finalizeLeads(parseOverpass(found.json, center), req.limit), source: 'overpass' }
+    return { center, leads: finalizeLeads([...parseOverpass(found.json, center), ...(byName ?? [])], req.limit), source: 'overpass' }
+  }
+  if (byName) {
+    return {
+      center,
+      leads: finalizeLeads(byName, req.limit),
+      source: 'nominatim',
+      notice: 'Map servers were busy, so results came from a name search and may be incomplete.',
+    }
   }
 
-  const def = getCategory(req.category)
   const terms = def?.nominatimTerms ?? []
   try {
     if (terms.length === 0) throw new Error(`No Nominatim phrase for category ${req.category}`)

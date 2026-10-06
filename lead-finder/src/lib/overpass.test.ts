@@ -76,6 +76,22 @@ describe('formatAddress / detectCategory', () => {
     expect(detectCategory({ craft: 'plumber' }).id).toBe('trades')
     expect(detectCategory({}).label).toBe('Business')
   })
+  it('detects drywall and ceiling firms by tag or by name', () => {
+    expect(detectCategory({ craft: 'plasterer' })).toEqual({ id: 'drywall', label: 'Drywall & ceiling contractor' })
+    expect(detectCategory({ craft: 'insulation' }).id).toBe('drywall')
+    expect(detectCategory({ office: 'company', name: 'Rocky Mountain DryWall' }).id).toBe('drywall')
+    expect(detectCategory({ office: 'company', name: 'SRB Acoustics' }).id).toBe('drywall')
+    expect(detectCategory({ craft: 'carpenter', name: 'Metal Framing Pros' }).id).toBe('drywall')
+    expect(detectCategory({ craft: 'carpenter', name: 'Oak Cabinets' }).id).toBe('trades')
+    expect(detectCategory({ shop: 'frame', name: 'Art & Framing' }).id).not.toBe('drywall')
+  })
+  it('sends only the fast drywall tag selector to Overpass, never the name matches', () => {
+    for (const cat of ['drywall', 'any'] as const) {
+      const q = buildOverpassQuery(39.74, -104.99, 5, cat, 50)
+      expect(q).toContain('plasterer|ceiling')
+      expect(q).not.toContain('acoustic')
+    }
+  })
 })
 
 describe('brand tags', () => {

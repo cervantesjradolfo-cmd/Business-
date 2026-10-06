@@ -31,6 +31,16 @@ export function buildNominatimSearchUrl(term: string, location: string, email?: 
   return `${NOMINATIM_BASE}/search?${p.toString()}`
 }
 
+// Searches names (not OSM special phrases) inside the box around the search circle.
+export function buildNominatimNameUrl(term: string, center: { lat: number; lon: number }, radiusKm: number, email?: string): string {
+  const dLat = radiusKm / 111
+  const dLon = radiusKm / (111 * Math.cos((center.lat * Math.PI) / 180))
+  const viewbox = [center.lon - dLon, center.lat + dLat, center.lon + dLon, center.lat - dLat].map((n) => n.toFixed(5)).join(',')
+  const p = new URLSearchParams({ q: term, format: 'jsonv2', extratags: '1', addressdetails: '1', limit: '40', viewbox, bounded: '1' })
+  if (email) p.set('email', email)
+  return `${NOMINATIM_BASE}/search?${p.toString()}`
+}
+
 type Item = {
   osm_type?: string
   osm_id?: number
