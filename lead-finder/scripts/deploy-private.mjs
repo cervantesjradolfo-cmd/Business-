@@ -8,7 +8,7 @@
 // 2. Turns on Vercel Authentication (Deployment Protection): visitors must be signed in
 //    to your Vercel account, so the site is private to you.
 // 3. Sets APP_ACCESS_KEY (generated if you don't pass one) as a second lock on the API,
-//    plus LEADS_CONTACT_EMAIL and ANTHROPIC_API_KEY when they are set in your shell.
+//    plus LEADS_CONTACT_EMAIL, ANTHROPIC_API_KEY and GEOAPIFY_API_KEY when they are set in your shell.
 // 4. Deploys to production and checks that a signed-out request is refused.
 //
 // It prints the site URL and the access key once. Enter the key in the app under
@@ -22,7 +22,7 @@ import { fileURLToPath } from 'node:url'
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 // Tolerate values pasted with surrounding spaces, quotes or <angle brackets>.
 const clean = (value) => (value || '').trim().replace(/^[<"']+|[>"']+$/g, '').trim()
-for (const key of ['VERCEL_TOKEN', 'APP_ACCESS_KEY', 'LEADS_CONTACT_EMAIL', 'ANTHROPIC_API_KEY']) {
+for (const key of ['VERCEL_TOKEN', 'APP_ACCESS_KEY', 'LEADS_CONTACT_EMAIL', 'ANTHROPIC_API_KEY', 'GEOAPIFY_API_KEY']) {
   if (process.env[key] != null) process.env[key] = clean(process.env[key])
 }
 const token = process.env.VERCEL_TOKEN
@@ -85,6 +85,7 @@ else if (!has('APP_ACCESS_KEY')) { generatedKey = randomBytes(18).toString('base
 if (process.env.LEADS_CONTACT_EMAIL) await setEnv('LEADS_CONTACT_EMAIL', process.env.LEADS_CONTACT_EMAIL)
 else if (!has('LEADS_CONTACT_EMAIL')) console.warn('Warning: LEADS_CONTACT_EMAIL is not set. OpenStreetMap may refuse searches until you set it.')
 if (process.env.ANTHROPIC_API_KEY) await setEnv('ANTHROPIC_API_KEY', process.env.ANTHROPIC_API_KEY)
+if (process.env.GEOAPIFY_API_KEY) await setEnv('GEOAPIFY_API_KEY', process.env.GEOAPIFY_API_KEY)
 
 console.log('Deploying…')
 let url = cli(['deploy', '--prod', '--yes']).split('\n').map((l) => l.trim()).filter((l) => l.startsWith('https://')).pop()

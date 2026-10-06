@@ -7,7 +7,7 @@ import { devApi } from './server/devApi.ts'
 export default defineConfig(({ mode }) => {
   // Let the dev API middleware see keys from .env.local
   const env = loadEnv(mode, process.cwd(), '')
-  for (const key of ['ANTHROPIC_API_KEY', 'LEADS_CONTACT_EMAIL', 'APP_ACCESS_KEY', 'OVERPASS_URLS']) {
+  for (const key of ['ANTHROPIC_API_KEY', 'LEADS_CONTACT_EMAIL', 'APP_ACCESS_KEY', 'OVERPASS_URLS', 'GEOAPIFY_API_KEY']) {
     if (env[key] && !process.env[key]) process.env[key] = env[key]
   }
   return {

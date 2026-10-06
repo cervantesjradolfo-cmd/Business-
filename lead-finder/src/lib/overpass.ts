@@ -68,6 +68,10 @@ function matchesSelector(sel: string, tags: Tags): boolean {
   })
 }
 
+export function matchesAnySelector(selectors: string[], tags: Tags): boolean {
+  return selectors.some((s) => matchesSelector(s, tags))
+}
+
 const GENERIC_KEYS = ['shop', 'amenity', 'craft', 'office', 'healthcare', 'leisure']
 
 function humanise(v: string): string {

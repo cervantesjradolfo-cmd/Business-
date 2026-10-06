@@ -1,6 +1,7 @@
 // @vitest-environment node
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { NOMINATIM_FORBIDDEN, OVERPASS_FALLBACK_NOTICE, clearOverpassCache, geocode, overpassSearch, searchBusinesses } from './osm'
+import { GEOAPIFY_URL } from '../src/lib/geoapify'
 
 const okJson = (data: unknown) => new Response(JSON.stringify(data), { status: 200, headers: { 'content-type': 'application/json' } })
 const geo = [{ lat: '30.27', lon: '-97.74', display_name: 'Austin, TX' }]
@@ -316,5 +317,41 @@ describe('Nominatim fallback terms', () => {
     stub((url) => (url.includes('nominatim') ? okJson(geo) : okJson({ elements: [{ type: 'node', id: 1, lat: 30.271, lon: -97.741, tags: { name: 'Starbucks', amenity: 'cafe', brand: 'Starbucks' } }] })))
     const r = await searchBusinesses({ location: 'Chain Town', category: 'cafes', radiusKm: 5, limit: 10 }, { sleep: async () => {} })
     expect('leads' in r && r.leads[0].isChain).toBe(true)
+  })
+})
+
+describe('Geoapify', () => {
+  const saved = process.env.GEOAPIFY_API_KEY
+  afterEach(() => {
+    if (saved === undefined) delete process.env.GEOAPIFY_API_KEY
+    else process.env.GEOAPIFY_API_KEY = saved
+  })
+  const geoFeature = { features: [{ properties: { lat: 30.271, lon: -97.741, datasource: { raw: { osm_type: 'n', osm_id: 9, name: 'Geo Cafe', amenity: 'cafe' } } } }] }
+
+  it('uses Geoapify first when a key is set, without touching Overpass', async () => {
+    process.env.GEOAPIFY_API_KEY = ' test-key '
+    stub((url) => (url.startsWith(GEOAPIFY_URL) ? okJson(geoFeature) : url.includes('nominatim') ? okJson(geo) : Promise.reject(new Error('Overpass must not be called'))))
+    const r = await searchBusinesses({ location: 'Geo City', category: 'cafes', radiusKm: 5, limit: 10 }, { sleep: async () => {} })
+    expect('leads' in r && r.source).toBe('geoapify')
+    expect('leads' in r && r.leads.map((l) => l.name)).toEqual(['Geo Cafe'])
+    const geoCall = calls.find((u) => u.startsWith(GEOAPIFY_URL))!
+    expect(new URL(geoCall).searchParams.get('apiKey')).toBe('test-key')
+  })
+
+  it('falls back to Overpass when Geoapify fails, and never logs the key', async () => {
+    process.env.GEOAPIFY_API_KEY = 'secret-key'
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    stub((url) => (url.startsWith(GEOAPIFY_URL) ? new Response('{"error":"Unauthorized"}', { status: 401 }) : url.includes('nominatim') ? okJson(geo) : okJson(elements)))
+    const r = await searchBusinesses({ location: 'Geo Fail City', category: 'cafes', radiusKm: 5, limit: 10 }, { sleep: async () => {} })
+    expect('leads' in r && r.source).toBe('overpass')
+    expect(JSON.stringify(warn.mock.calls)).not.toContain('secret-key')
+    warn.mockRestore()
+  })
+
+  it('is skipped entirely without a key', async () => {
+    delete process.env.GEOAPIFY_API_KEY
+    stub((url) => (url.includes('nominatim') ? okJson(geo) : okJson(elements)))
+    await searchBusinesses({ location: 'No Key City', category: 'cafes', radiusKm: 5, limit: 10 }, { sleep: async () => {} })
+    expect(calls.some((u) => u.startsWith(GEOAPIFY_URL))).toBe(false)
   })
 })

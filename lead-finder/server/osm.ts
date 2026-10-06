@@ -1,6 +1,7 @@
 // OpenStreetMap network code: Nominatim (geocoding + fallback search) and Overpass.
 import { getCategory } from '../src/data/categories.js'
 import { dedupeLeads, finalizeLeads } from '../src/lib/leads.js'
+import { buildGeoapifyUrl, geoapifyToOverpass } from '../src/lib/geoapify.js'
 import { buildGeocodeUrl, buildNominatimSearchUrl, parseGeocode, parseNominatimSearch } from '../src/lib/nominatim.js'
 import { buildOverpassQuery, parseOverpass, parseOverpassUrls, parseRetryAfter } from '../src/lib/overpass.js'
 import type { Lead, OverpassDiagnostic, SearchRequest, SearchResponse } from '../src/lib/types.js'
@@ -24,6 +25,7 @@ const CACHE_MAX = 200
 export const SEARCH_BUDGET_MS = 50_000 // searchBusinesses returns by start + 50 s (10 s margin under maxDuration 60)
 export const FALLBACK_RESERVE_MS = 14_000 // time kept back for the Nominatim fallback
 export const MIRROR_TIMEOUT_MS = 25_000 // per mirror attempt
+export const GEOAPIFY_TIMEOUT_MS = 15_000
 const RETRY_AFTER_CAP_MS = 3_000
 const RETRY_DEFAULT_MS = 1_000 // when 429/504 has no usable Retry-After
 const MIN_ATTEMPT_MS = 5_000 // do not start (or retry) an attempt with less time than this left
@@ -166,6 +168,33 @@ export async function overpassSearch(
   })
 }
 
+// Geoapify Places, when GEOAPIFY_API_KEY is set. Returns null (and the search carries on with Overpass
+// and Nominatim) when there is no key or Geoapify fails. The URL carries the key, so it is never logged.
+export async function geoapifySearch(center: { lat: number; lon: number }, req: SearchRequest): Promise<Lead[] | null> {
+  const key = (process.env.GEOAPIFY_API_KEY ?? '').trim()
+  if (!key) return null
+  try {
+    const res = await fetchWithTimeout(buildGeoapifyUrl(center.lat, center.lon, req, key), {
+      headers: { Accept: 'application/json' },
+      timeoutMs: GEOAPIFY_TIMEOUT_MS,
+      redirect: 'error',
+    })
+    if (!res.ok) {
+      console.warn('geoapify unavailable', res.status)
+      return null
+    }
+    const json = geoapifyToOverpass(await res.json(), req)
+    if (!json) {
+      console.warn('geoapify bad response')
+      return null
+    }
+    return finalizeLeads(parseOverpass(json, center), req.limit)
+  } catch (err) {
+    console.warn('geoapify error', err instanceof Error ? err.name : 'unknown')
+    return null
+  }
+}
+
 export async function nominatimSearch(term: string, location: string, deps?: Deps, timeoutMs = 10000): Promise<unknown> {
   await throttle(deps)
   const res = await fetchWithTimeout(buildNominatimSearchUrl(term, location, emailParam()), {
@@ -191,6 +220,9 @@ export async function searchBusinesses(
     return { error: 'Location lookup failed. Please try again.', status: 502 }
   }
   if (!center) return { error: "Couldn't find that location. Try a city name or ZIP code.", status: 404 }
+
+  const geo = await geoapifySearch(center, req)
+  if (geo) return { center, leads: geo, source: 'geoapify' }
 
   let diagnostics: OverpassDiagnostic[] = []
   if (!req.skipOverpass) {

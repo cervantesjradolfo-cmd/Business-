@@ -12,35 +12,45 @@ export type CategoryDef = {
   // Nominatim only understands OSM "special phrases" (not free text); each term was checked live.
   // An empty list means no phrase works, so the fallback cannot search this category.
   nominatimTerms: string[]
+  // Geoapify Places categories (https://apidocs.geoapify.com/docs/places/#categories). They can be broader
+  // than `selectors`; results are filtered by `selectors` afterwards, so they only need to cover them.
+  geoapify: string[]
 }
 
 const SPECIFIC: CategoryDef[] = [
-  { id: 'restaurants', label: 'Restaurants', singular: 'Restaurant', selectors: ['["amenity"~"^(restaurant|fast_food)$"]'], nominatimTerms: ['restaurant'] },
-  { id: 'cafes', label: 'Cafes', singular: 'Cafe', selectors: ['["amenity"~"^(cafe|ice_cream)$"]'], nominatimTerms: ['cafe'] },
-  { id: 'salons', label: 'Hair & beauty salons', singular: 'Hair salon', selectors: ['["shop"="beauty"]', '["shop"="hairdresser"]["hairdresser"!="barber"]'], nominatimTerms: ['hairdresser'] },
-  { id: 'barbers', label: 'Barbers', singular: 'Barber', selectors: ['["shop"="hairdresser"]["hairdresser"="barber"]', '["shop"="hairdresser"]["name"~"barber",i]'], nominatimTerms: ['hairdresser'] },
-  { id: 'auto_repair', label: 'Auto repair', singular: 'Auto repair shop', selectors: ['["shop"~"^(car_repair|tyres)$"]'], nominatimTerms: ['car repair'] },
-  { id: 'dentists', label: 'Dentists', singular: 'Dentist', selectors: ['["amenity"="dentist"]', '["healthcare"="dentist"]'], nominatimTerms: ['dentist'] },
-  { id: 'fitness', label: 'Gyms & fitness', singular: 'Gym', selectors: ['["leisure"="fitness_centre"]', '["amenity"="dojo"]'], nominatimTerms: ['martial arts', 'sports centre'] },
+  { id: 'restaurants', label: 'Restaurants', singular: 'Restaurant', selectors: ['["amenity"~"^(restaurant|fast_food)$"]'], nominatimTerms: ['restaurant'], geoapify: ['catering.restaurant', 'catering.fast_food'] },
+  { id: 'cafes', label: 'Cafes', singular: 'Cafe', selectors: ['["amenity"~"^(cafe|ice_cream)$"]'], nominatimTerms: ['cafe'], geoapify: ['catering.cafe'] },
+  { id: 'salons', label: 'Hair & beauty salons', singular: 'Hair salon', selectors: ['["shop"="beauty"]', '["shop"="hairdresser"]["hairdresser"!="barber"]'], nominatimTerms: ['hairdresser'], geoapify: ['service.beauty'] },
+  { id: 'barbers', label: 'Barbers', singular: 'Barber', selectors: ['["shop"="hairdresser"]["hairdresser"="barber"]', '["shop"="hairdresser"]["name"~"barber",i]'], nominatimTerms: ['hairdresser'], geoapify: ['service.beauty.hairdresser'] },
+  { id: 'auto_repair', label: 'Auto repair', singular: 'Auto repair shop', selectors: ['["shop"~"^(car_repair|tyres)$"]'], nominatimTerms: ['car repair'], geoapify: ['service.vehicle.repair.car', 'commercial.vehicle'] },
+  { id: 'dentists', label: 'Dentists', singular: 'Dentist', selectors: ['["amenity"="dentist"]', '["healthcare"="dentist"]'], nominatimTerms: ['dentist'], geoapify: ['healthcare.dentist'] },
+  { id: 'fitness', label: 'Gyms & fitness', singular: 'Gym', selectors: ['["leisure"="fitness_centre"]', '["amenity"="dojo"]'], nominatimTerms: ['martial arts', 'sports centre'], geoapify: ['sport.fitness', 'sport.dojo'] },
   {
     id: 'trades',
     label: 'Contractors & trades',
     singular: 'Contractor',
     selectors: ['["craft"~"^(electrician|plumber|hvac|roofer|carpenter|painter|builder|tiler|glaziery|stonemason|gardener|floorer|plasterer|metal_construction|construction)$"]'],
     nominatimTerms: ['electrician', 'carpenter'],
+    geoapify: ['service.carpenter', 'service.electrician', 'service.metal_construction'],
   },
-  { id: 'cleaning', label: 'Cleaning services', singular: 'Cleaning service', selectors: ['["shop"~"^(dry_cleaning|laundry)$"]', '["craft"="cleaning"]'], nominatimTerms: ['dry cleaning', 'laundry'] },
-  { id: 'party_rentals', label: 'Party & event rentals', singular: 'Party rental', selectors: ['["shop"~"^(party|rental)$"]', '["amenity"="events_venue"]'], nominatimTerms: [] },
+  { id: 'cleaning', label: 'Cleaning services', singular: 'Cleaning service', selectors: ['["shop"~"^(dry_cleaning|laundry)$"]', '["craft"="cleaning"]'], nominatimTerms: ['dry cleaning', 'laundry'], geoapify: ['service.cleaning'] },
+  { id: 'party_rentals', label: 'Party & event rentals', singular: 'Party rental', selectors: ['["shop"~"^(party|rental)$"]', '["amenity"="events_venue"]'], nominatimTerms: [], geoapify: ['activity.events_venue', 'rental', 'commercial.hobby'] },
   {
     id: 'retail',
     label: 'Retail shops',
     singular: 'Shop',
     selectors: ['["shop"~"^(clothes|gift|boutique|shoes|jewelry|florist|furniture|books|toys|sports|hardware|pet|bicycle|variety_store|second_hand|electronics|cosmetics)$"]'],
     nominatimTerms: ['clothes shop', 'gift shop', 'shoe shop'],
+    geoapify: [
+      'commercial.clothing', 'commercial.gift_and_souvenir', 'commercial.jewelry', 'commercial.florist',
+      'commercial.furniture_and_interior', 'commercial.books', 'commercial.toy_and_game', 'commercial.outdoor_and_sport',
+      'commercial.houseware_and_hardware', 'commercial.pet', 'commercial.second_hand', 'commercial.elektronics',
+      'commercial.health_and_beauty',
+    ],
   },
-  { id: 'real_estate', label: 'Real estate', singular: 'Real estate agent', selectors: ['["office"="estate_agent"]'], nominatimTerms: ['estate agent'] },
-  { id: 'law', label: 'Law offices', singular: 'Law office', selectors: ['["office"~"^(lawyer|notary)$"]'], nominatimTerms: [] },
-  { id: 'medical', label: 'Medical clinics', singular: 'Medical clinic', selectors: ['["amenity"~"^(clinic|doctors)$"]', '["healthcare"~"^(physiotherapist|chiropractor)$"]'], nominatimTerms: ['clinic', 'doctors'] },
+  { id: 'real_estate', label: 'Real estate', singular: 'Real estate agent', selectors: ['["office"="estate_agent"]'], nominatimTerms: ['estate agent'], geoapify: ['office.estate_agent', 'service.estate_agent'] },
+  { id: 'law', label: 'Law offices', singular: 'Law office', selectors: ['["office"~"^(lawyer|notary)$"]'], nominatimTerms: [], geoapify: ['office.lawyer', 'office.notary'] },
+  { id: 'medical', label: 'Medical clinics', singular: 'Medical clinic', selectors: ['["amenity"~"^(clinic|doctors)$"]', '["healthcare"~"^(physiotherapist|chiropractor)$"]'], nominatimTerms: ['clinic', 'doctors'], geoapify: ['healthcare.clinic_or_praxis'] },
 ]
 
 export const CATEGORIES: CategoryDef[] = [
@@ -50,6 +60,7 @@ export const CATEGORIES: CategoryDef[] = [
     singular: 'Business',
     selectors: SPECIFIC.flatMap((c) => c.selectors),
     nominatimTerms: ['restaurant', 'cafe', 'hairdresser', 'car repair', 'dentist'],
+    geoapify: [...new Set(SPECIFIC.flatMap((c) => c.geoapify))],
   },
   ...SPECIFIC,
 ]

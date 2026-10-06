@@ -10,7 +10,7 @@ import { toLead } from './lib/format'
 import { buildTemplatePitch } from './lib/pitch'
 import { scoreLead } from './lib/scoring'
 import { useSavedLeads, useSender } from './lib/storage'
-import type { AuditResult, Filters as FiltersState, Lead, Pitch, PitchRequest, ScoredLead, SearchRequest, Sender } from './lib/types'
+import type { AuditResult, Filters as FiltersState, Lead, Pitch, PitchRequest, ScoredLead, SearchRequest, SearchResponse, Sender } from './lib/types'
 import ApiNotice from './components/ApiNotice'
 import DemoBanner from './components/DemoBanner'
 import EmptyState from './components/EmptyState'
@@ -43,7 +43,7 @@ export default function App() {
   const [phase, setPhase] = useState<Phase>('idle')
   const [progress, setProgress] = useState({ done: 0, total: 0 })
   const [notice, setNotice] = useState<string | undefined>()
-  const [source, setSource] = useState<'overpass' | 'nominatim' | undefined>()
+  const [source, setSource] = useState<SearchResponse['source'] | undefined>()
   const [error, setError] = useState<string | undefined>()
   const [mode, setMode] = useState<'live' | 'demo'>('live')
   const [tab, setTab] = useState<'results' | 'saved'>('results')
@@ -316,6 +316,12 @@ export default function App() {
       </main>
       <footer className="border-t border-slate-200 bg-white py-3 text-center text-xs text-slate-500">
         <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer" className="hover:underline">Map data © OpenStreetMap contributors</a>
+        {source === 'geoapify' && (
+          <>
+            {' · '}
+            <a href="https://www.geoapify.com/" target="_blank" rel="noopener noreferrer" className="hover:underline">Powered by Geoapify</a>
+          </>
+        )}
       </footer>
       {settingsOpen && <SenderSettings sender={sender} onSave={setSender} onClose={() => setSettingsOpen(false)} />}
     </div>

@@ -95,7 +95,7 @@ export type OverpassDiagnostic = {
 export type SearchResponse = {
   center: { lat: number; lon: number; displayName: string }
   leads: Lead[]
-  source: 'overpass' | 'nominatim'
+  source: 'geoapify' | 'overpass' | 'nominatim'
   notice?: string
   diagnostics?: OverpassDiagnostic[] // only on source 'nominatim' (Overpass failed)
 }
