@@ -1,7 +1,7 @@
 // OpenStreetMap network code: Nominatim (geocoding + fallback search) and Overpass.
 import { getCategory } from '../src/data/categories.js'
 import { dedupeLeads, finalizeLeads } from '../src/lib/leads.js'
-import { buildGeoapifyUrl, geoapifyToOverpass } from '../src/lib/geoapify.js'
+import { buildGeoapifyUrl, geoapifyPerCategoryLimit, geoapifyToOverpass } from '../src/lib/geoapify.js'
 import { buildGeocodeUrl, buildNominatimSearchUrl, parseGeocode, parseNominatimSearch } from '../src/lib/nominatim.js'
 import { buildOverpassQuery, parseOverpass, parseOverpassUrls, parseRetryAfter } from '../src/lib/overpass.js'
 import type { Lead, OverpassDiagnostic, SearchRequest, SearchResponse } from '../src/lib/types.js'
@@ -25,7 +25,7 @@ const CACHE_MAX = 200
 export const SEARCH_BUDGET_MS = 50_000 // searchBusinesses returns by start + 50 s (10 s margin under maxDuration 60)
 export const FALLBACK_RESERVE_MS = 14_000 // time kept back for the Nominatim fallback
 export const MIRROR_TIMEOUT_MS = 25_000 // per mirror attempt
-export const GEOAPIFY_TIMEOUT_MS = 15_000
+export const GEOAPIFY_TIMEOUT_MS = 25_000 // for all of a search's Geoapify requests together ("any" makes ~30)
 const RETRY_AFTER_CAP_MS = 3_000
 const RETRY_DEFAULT_MS = 1_000 // when 429/504 has no usable Retry-After
 const MIN_ATTEMPT_MS = 5_000 // do not start (or retry) an attempt with less time than this left
@@ -168,31 +168,80 @@ export async function overpassSearch(
   })
 }
 
-// Geoapify Places, when GEOAPIFY_API_KEY is set. Returns null (and the search carries on with Overpass
-// and Nominatim) when there is no key or Geoapify fails. The URL carries the key, so it is never logged.
-export async function geoapifySearch(center: { lat: number; lon: number }, req: SearchRequest): Promise<Lead[] | null> {
+// Geoapify Places, when GEOAPIFY_API_KEY is set: one request per Geoapify category (a combined list
+// only returns one category's places), at most GEOAPIFY_CONCURRENCY at a time to stay under the free
+// plan's 5 requests a second, merged and cached for 10 minutes. Returns null (and the search carries on
+// with Overpass and Nominatim) when there is no key or every request failed. URLs carry the key, so
+// they are never logged.
+export const GEOAPIFY_CONCURRENCY = 4
+const geoapifyCache = new Map<string, { leads: Lead[]; expiresAt: number }>()
+
+export function clearGeoapifyCache(): void {
+  geoapifyCache.clear()
+}
+
+export async function geoapifySearch(
+  center: { lat: number; lon: number },
+  req: SearchRequest,
+  deps?: Deps,
+): Promise<Lead[] | null> {
   const key = (process.env.GEOAPIFY_API_KEY ?? '').trim()
   if (!key) return null
-  try {
-    const res = await fetchWithTimeout(buildGeoapifyUrl(center.lat, center.lon, req, key), {
-      headers: { Accept: 'application/json' },
-      timeoutMs: GEOAPIFY_TIMEOUT_MS,
-      redirect: 'error',
-    })
-    if (!res.ok) {
-      console.warn('geoapify unavailable', res.status)
-      return null
+  const now = deps?.now ?? Date.now
+  const def = getCategory(req.category)
+  if (!def || def.geoapify.length === 0) return null
+  const cacheKey = JSON.stringify([center.lat, center.lon, req.radiusKm, req.category, req.limit])
+  const cached = geoapifyCache.get(cacheKey)
+  if (cached && now() < cached.expiresAt) return cached.leads
+
+  const perLimit = geoapifyPerCategoryLimit(req, def.geoapify.length)
+  const deadline = now() + GEOAPIFY_TIMEOUT_MS
+  const queue = [...def.geoapify]
+  const elements = new Map<string, unknown>()
+  let okCount = 0
+  const failures: string[] = []
+
+  async function one(category: string): Promise<void> {
+    const left = deadline - now()
+    if (left < 1000) {
+      failures.push('timeout')
+      return
     }
-    const json = geoapifyToOverpass(await res.json(), req)
-    if (!json) {
-      console.warn('geoapify bad response')
-      return null
+    try {
+      const res = await fetchWithTimeout(buildGeoapifyUrl(center.lat, center.lon, req.radiusKm, category, perLimit, key), {
+        headers: { Accept: 'application/json' },
+        timeoutMs: left,
+        redirect: 'error',
+      })
+      if (!res.ok) {
+        failures.push(String(res.status))
+        return
+      }
+      const json = geoapifyToOverpass(await res.json(), req.category)
+      if (!json) {
+        failures.push('bad_response')
+        return
+      }
+      okCount++
+      for (const el of json.elements as { type: string; id: number }[]) elements.set(`${el.type}/${el.id}`, el)
+    } catch (err) {
+      failures.push(err instanceof Error && err.name === 'TimeoutError' ? 'timeout' : 'network_error')
     }
-    return finalizeLeads(parseOverpass(json, center), req.limit)
-  } catch (err) {
-    console.warn('geoapify error', err instanceof Error ? err.name : 'unknown')
-    return null
   }
+  async function worker(): Promise<void> {
+    for (let c = queue.shift(); c !== undefined; c = queue.shift()) await one(c)
+  }
+  await Promise.all(Array.from({ length: Math.min(GEOAPIFY_CONCURRENCY, queue.length) }, worker))
+
+  if (failures.length > 0) console.warn('geoapify failures', JSON.stringify(failures))
+  if (okCount === 0) return null
+  const leads = finalizeLeads(parseOverpass({ elements: [...elements.values()] }, center), req.limit)
+  // Cache only complete answers, so a partial one is retried next time.
+  if (failures.length === 0) {
+    if (geoapifyCache.size >= CACHE_MAX) geoapifyCache.delete(geoapifyCache.keys().next().value as string)
+    geoapifyCache.set(cacheKey, { leads, expiresAt: now() + OVERPASS_CACHE_TTL_MS })
+  }
+  return leads
 }
 
 export async function nominatimSearch(term: string, location: string, deps?: Deps, timeoutMs = 10000): Promise<unknown> {
@@ -221,7 +270,7 @@ export async function searchBusinesses(
   }
   if (!center) return { error: "Couldn't find that location. Try a city name or ZIP code.", status: 404 }
 
-  const geo = await geoapifySearch(center, req)
+  const geo = await geoapifySearch(center, req, deps)
   if (geo) return { center, leads: geo, source: 'geoapify' }
 
   let diagnostics: OverpassDiagnostic[] = []

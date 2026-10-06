@@ -12,8 +12,10 @@ export type CategoryDef = {
   // Nominatim only understands OSM "special phrases" (not free text); each term was checked live.
   // An empty list means no phrase works, so the fallback cannot search this category.
   nominatimTerms: string[]
-  // Geoapify Places categories (https://apidocs.geoapify.com/docs/places/#categories). They can be broader
-  // than `selectors`; results are filtered by `selectors` afterwards, so they only need to cover them.
+  // Geoapify Places categories (https://apidocs.geoapify.com/docs/places/#categories), one request each
+  // (a comma-separated list returns only one category's places). They can be broader than `selectors`;
+  // results are filtered by `selectors` afterwards. sport.dojo, office.notary and service.estate_agent
+  // returned nothing in a live check, so they are left out.
   geoapify: string[]
 }
 
@@ -24,7 +26,7 @@ const SPECIFIC: CategoryDef[] = [
   { id: 'barbers', label: 'Barbers', singular: 'Barber', selectors: ['["shop"="hairdresser"]["hairdresser"="barber"]', '["shop"="hairdresser"]["name"~"barber",i]'], nominatimTerms: ['hairdresser'], geoapify: ['service.beauty.hairdresser'] },
   { id: 'auto_repair', label: 'Auto repair', singular: 'Auto repair shop', selectors: ['["shop"~"^(car_repair|tyres)$"]'], nominatimTerms: ['car repair'], geoapify: ['service.vehicle.repair.car', 'commercial.vehicle'] },
   { id: 'dentists', label: 'Dentists', singular: 'Dentist', selectors: ['["amenity"="dentist"]', '["healthcare"="dentist"]'], nominatimTerms: ['dentist'], geoapify: ['healthcare.dentist'] },
-  { id: 'fitness', label: 'Gyms & fitness', singular: 'Gym', selectors: ['["leisure"="fitness_centre"]', '["amenity"="dojo"]'], nominatimTerms: ['martial arts', 'sports centre'], geoapify: ['sport.fitness', 'sport.dojo'] },
+  { id: 'fitness', label: 'Gyms & fitness', singular: 'Gym', selectors: ['["leisure"="fitness_centre"]', '["amenity"="dojo"]'], nominatimTerms: ['martial arts', 'sports centre'], geoapify: ['sport.fitness'] },
   {
     id: 'trades',
     label: 'Contractors & trades',
@@ -48,8 +50,8 @@ const SPECIFIC: CategoryDef[] = [
       'commercial.health_and_beauty',
     ],
   },
-  { id: 'real_estate', label: 'Real estate', singular: 'Real estate agent', selectors: ['["office"="estate_agent"]'], nominatimTerms: ['estate agent'], geoapify: ['office.estate_agent', 'service.estate_agent'] },
-  { id: 'law', label: 'Law offices', singular: 'Law office', selectors: ['["office"~"^(lawyer|notary)$"]'], nominatimTerms: [], geoapify: ['office.lawyer', 'office.notary'] },
+  { id: 'real_estate', label: 'Real estate', singular: 'Real estate agent', selectors: ['["office"="estate_agent"]'], nominatimTerms: ['estate agent'], geoapify: ['office.estate_agent'] },
+  { id: 'law', label: 'Law offices', singular: 'Law office', selectors: ['["office"~"^(lawyer|notary)$"]'], nominatimTerms: [], geoapify: ['office.lawyer'] },
   { id: 'medical', label: 'Medical clinics', singular: 'Medical clinic', selectors: ['["amenity"~"^(clinic|doctors)$"]', '["healthcare"~"^(physiotherapist|chiropractor)$"]'], nominatimTerms: ['clinic', 'doctors'], geoapify: ['healthcare.clinic_or_praxis'] },
 ]
 

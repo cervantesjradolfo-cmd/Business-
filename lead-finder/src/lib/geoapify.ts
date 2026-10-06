@@ -2,20 +2,24 @@
 // public Overpass servers). Answers are turned into Overpass-style elements so parseOverpass can read them.
 import { getCategory } from '../data/categories.js'
 import { matchesAnySelector } from './overpass.js'
-import type { SearchRequest } from './types.js'
+import type { CategoryId, SearchRequest } from './types.js'
 
 export const GEOAPIFY_URL = 'https://api.geoapify.com/v2/places'
-const MAX_LIMIT = 500 // Geoapify's per-request maximum
+const MAX_LIMIT = 500 // Geoapify's per-request maximum (1 credit per 20 places)
 const KIND_KEYS = ['shop', 'amenity', 'craft', 'office', 'healthcare', 'leisure']
 
-export function buildGeoapifyUrl(lat: number, lon: number, req: SearchRequest, apiKey: string): string {
-  const def = getCategory(req.category) ?? getCategory('any')!
+// Places per category request: the search's share of limit x 3 (room for the selector filter, duplicates
+// and chains, as with Overpass), at least 20 (the 1-credit size) and at most Geoapify's 500.
+export function geoapifyPerCategoryLimit(req: SearchRequest, categories: number): number {
+  return Math.min(MAX_LIMIT, Math.max(20, Math.ceil((req.limit * 3) / Math.max(1, categories))))
+}
+
+export function buildGeoapifyUrl(lat: number, lon: number, radiusKm: number, category: string, limit: number, apiKey: string): string {
   const params = new URLSearchParams({
-    categories: def.geoapify.join(','),
-    filter: `circle:${lon},${lat},${Math.round(req.radiusKm * 1000)}`,
+    categories: category,
+    filter: `circle:${lon},${lat},${Math.round(radiusKm * 1000)}`,
     bias: `proximity:${lon},${lat}`,
-    // Extra rows leave room for the selector filter, duplicates and chains, as with Overpass.
-    limit: String(Math.min(req.limit * 3, MAX_LIMIT)),
+    limit: String(limit),
     lang: 'en',
     apiKey,
   })
@@ -29,10 +33,10 @@ const str = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : type
 
 // GeoJSON features -> { elements } in Overpass shape. Uses the OSM tags Geoapify passes through in
 // datasource.raw, filling gaps from its own fields, and keeps only places the category's selectors match.
-export function geoapifyToOverpass(json: unknown, req: SearchRequest): { elements: unknown[] } | null {
+export function geoapifyToOverpass(json: unknown, category: CategoryId): { elements: unknown[] } | null {
   const features = (json as { features?: unknown })?.features
   if (!Array.isArray(features)) return null
-  const def = getCategory(req.category) ?? getCategory('any')!
+  const def = getCategory(category) ?? getCategory('any')!
   const elements: unknown[] = []
   for (const f of features as Feature[]) {
     const p = f?.properties

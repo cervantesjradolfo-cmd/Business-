@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { NOMINATIM_FORBIDDEN, OVERPASS_FALLBACK_NOTICE, clearOverpassCache, geocode, overpassSearch, searchBusinesses } from './osm'
+import { NOMINATIM_FORBIDDEN, OVERPASS_FALLBACK_NOTICE, clearGeoapifyCache, clearOverpassCache, geocode, overpassSearch, searchBusinesses } from './osm'
 import { GEOAPIFY_URL } from '../src/lib/geoapify'
 
 const okJson = (data: unknown) => new Response(JSON.stringify(data), { status: 200, headers: { 'content-type': 'application/json' } })
@@ -8,7 +8,7 @@ const geo = [{ lat: '30.27', lon: '-97.74', display_name: 'Austin, TX' }]
 const elements = { elements: [{ type: 'node', id: 1, lat: 30.271, lon: -97.741, tags: { name: 'Beans', amenity: 'cafe' } }] }
 
 let calls: string[]
-beforeEach(() => { calls = []; clearOverpassCache() })
+beforeEach(() => { calls = []; clearOverpassCache(); clearGeoapifyCache() })
 afterEach(() => { vi.unstubAllGlobals() })
 
 function stub(handler: (url: string, init?: RequestInit) => Response | Promise<Response>) {
@@ -346,6 +346,63 @@ describe('Geoapify', () => {
     expect('leads' in r && r.source).toBe('overpass')
     expect(JSON.stringify(warn.mock.calls)).not.toContain('secret-key')
     warn.mockRestore()
+  })
+
+  it('sends one request per Geoapify category, merges them and caches a complete answer', async () => {
+    process.env.GEOAPIFY_API_KEY = 'k'
+    const byCat: Record<string, unknown> = {
+      'catering.restaurant': { features: [{ properties: { lat: 30.271, lon: -97.741, datasource: { raw: { osm_type: 'n', osm_id: 1, name: 'Diner', amenity: 'restaurant' } } } }] },
+      'catering.fast_food': { features: [
+        { properties: { lat: 30.272, lon: -97.742, datasource: { raw: { osm_type: 'n', osm_id: 2, name: 'Burgers', amenity: 'fast_food' } } } },
+        { properties: { lat: 30.271, lon: -97.741, datasource: { raw: { osm_type: 'n', osm_id: 1, name: 'Diner', amenity: 'restaurant' } } } },
+      ] },
+    }
+    stub((url) => {
+      if (url.startsWith(GEOAPIFY_URL)) return okJson(byCat[new URL(url).searchParams.get('categories')!])
+      if (url.includes('nominatim')) return okJson(geo)
+      return Promise.reject(new Error('Overpass must not be called'))
+    })
+    const req = { location: 'Merge City', category: 'restaurants' as const, radiusKm: 5, limit: 10 }
+    const r = await searchBusinesses(req, { sleep: async () => {} })
+    expect('leads' in r && r.leads.map((l) => l.name).sort()).toEqual(['Burgers', 'Diner'])
+    const geoCalls = calls.filter((u) => u.startsWith(GEOAPIFY_URL)).map((u) => new URL(u).searchParams)
+    expect(geoCalls.map((p) => p.get('categories')).sort()).toEqual(['catering.fast_food', 'catering.restaurant'])
+    expect(geoCalls.every((p) => p.get('limit') === '20')).toBe(true)
+    await searchBusinesses(req, { sleep: async () => {} })
+    expect(calls.filter((u) => u.startsWith(GEOAPIFY_URL))).toHaveLength(2)
+  })
+
+  it('uses what came back when some category requests fail, and does not cache it', async () => {
+    process.env.GEOAPIFY_API_KEY = 'k'
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    stub((url) => {
+      if (url.startsWith(GEOAPIFY_URL)) {
+        return new URL(url).searchParams.get('categories') === 'catering.restaurant' ? okJson(geoFeature) : new Response('busy', { status: 429 })
+      }
+      return okJson(geo)
+    })
+    const req = { location: 'Partial City', category: 'restaurants' as const, radiusKm: 5, limit: 10 }
+    const r = await searchBusinesses(req, { sleep: async () => {} })
+    expect('leads' in r && r.source).toBe('geoapify')
+    await searchBusinesses(req, { sleep: async () => {} })
+    expect(calls.filter((u) => u.startsWith(GEOAPIFY_URL))).toHaveLength(4)
+  })
+
+  it('never has more than 4 Geoapify requests in flight', async () => {
+    process.env.GEOAPIFY_API_KEY = 'k'
+    let inFlight = 0
+    let peak = 0
+    stub(async (url) => {
+      if (!url.startsWith(GEOAPIFY_URL)) return okJson(geo)
+      inFlight++
+      peak = Math.max(peak, inFlight)
+      await new Promise((r) => setTimeout(r, 5))
+      inFlight--
+      return okJson({ features: [] })
+    })
+    await searchBusinesses({ location: 'Busy City', category: 'any', radiusKm: 5, limit: 10 }, { sleep: async () => {} })
+    expect(calls.filter((u) => u.startsWith(GEOAPIFY_URL)).length).toBeGreaterThan(10)
+    expect(peak).toBe(4)
   })
 
   it('is skipped entirely without a key', async () => {

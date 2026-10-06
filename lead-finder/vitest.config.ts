@@ -7,6 +7,8 @@ export default defineConfig((env) =>
     test: {
       environment: 'jsdom',
       include: ['src/**/*.test.{ts,tsx}', 'api/**/*.test.ts', 'server/**/*.test.ts'],
+      // Tests must not depend on keys in the developer's environment; Geoapify tests set their own.
+      env: { GEOAPIFY_API_KEY: '' },
     },
   }),
 )
