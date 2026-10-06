@@ -15,12 +15,9 @@ describe('buildOverpassQuery', () => {
   it('caps the element count at 600', () => {
     expect(buildOverpassQuery(1, 2, 1, 'cafes', 200)).toContain('out center tags 600;')
   })
-  it('any includes every category selector except the slow drywall name matches', () => {
+  it('any includes every category selector', () => {
     const q = buildOverpassQuery(1, 2, 1, 'any', 10)
-    for (const c of CATEGORIES) for (const s of c.selectors) {
-      if (s.includes('["name"~"drywall')) expect(q).not.toContain(`nwr${s}["name"]`)
-      else expect(q).toContain(`nwr${s}["name"]`)
-    }
+    for (const c of CATEGORIES) for (const s of c.selectors) expect(q).toContain(`nwr${s}["name"]`)
   })
   it('lists three mirrors in order', () => {
     expect(OVERPASS_MIRRORS[0]).toContain('overpass-api.de')
@@ -88,13 +85,12 @@ describe('formatAddress / detectCategory', () => {
     expect(detectCategory({ craft: 'carpenter', name: 'Oak Cabinets' }).id).toBe('trades')
     expect(detectCategory({ shop: 'frame', name: 'Art & Framing' }).id).not.toBe('drywall')
   })
-  it('builds a drywall query with the tag and name selectors', () => {
-    const q = buildOverpassQuery(39.74, -104.99, 5, 'drywall', 50)
-    expect(q).toContain('nwr["craft"~"^(drywall|drywall_contractor|plasterer|ceiling|insulation|framing|dry_lining)$"]["name"](around:5000,39.74,-104.99);')
-    expect(q).toContain('nwr["office"~"."]["name"~"drywall|acoustic|ceiling|framing",i]["name"](around:5000,39.74,-104.99);')
-    const any = buildOverpassQuery(39.74, -104.99, 5, 'any', 50)
-    expect(any).toContain('plasterer|ceiling')
-    expect(any).not.toContain('acoustic')
+  it('sends only the fast drywall tag selector to Overpass, never the name matches', () => {
+    for (const cat of ['drywall', 'any'] as const) {
+      const q = buildOverpassQuery(39.74, -104.99, 5, cat, 50)
+      expect(q).toContain('plasterer|ceiling')
+      expect(q).not.toContain('acoustic')
+    }
   })
 })
 

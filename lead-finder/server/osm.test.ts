@@ -36,16 +36,6 @@ describe('overpassSearch', () => {
     expect(await overpassSearch('q')).toBeNull()
     expect(calls).toHaveLength(3)
   })
-  it('gives a slow query more time on the first mirror and keeps the total at 45s', async () => {
-    const timeout = vi.spyOn(AbortSignal, 'timeout')
-    stub(() => { throw new Error('down') })
-    await overpassSearch('q')
-    expect(timeout.mock.calls.map((c) => c[0])).toEqual([15000, 15000, 15000])
-    timeout.mockClear()
-    await overpassSearch('q', 25000)
-    expect(timeout.mock.calls.map((c) => c[0])).toEqual([25000, 10000, 10000])
-    timeout.mockRestore()
-  })
 })
 
 describe('searchBusinesses', () => {
@@ -202,5 +192,52 @@ describe('Nominatim fallback terms', () => {
     stub((url) => (url.includes('nominatim') ? okJson(geo) : okJson({ elements: [{ type: 'node', id: 1, lat: 30.271, lon: -97.741, tags: { name: 'Starbucks', amenity: 'cafe', brand: 'Starbucks' } }] })))
     const r = await searchBusinesses({ location: 'Chain Town', category: 'cafes', radiusKm: 5, limit: 10 }, { sleep: async () => {} })
     expect('leads' in r && r.leads[0].isChain).toBe(true)
+  })
+})
+
+describe('drywall name search', () => {
+  const nameRow = (id: number, name: string, category: string, type: string) =>
+    ({ osm_type: 'node', osm_id: id, lat: '30.272', lon: '-97.742', category, type, name })
+  const byTerm: Record<string, unknown[]> = {
+    drywall: [nameRow(2, 'Rocky Mountain Drywall', 'office', 'company'), nameRow(1, 'Total Plastering', 'craft', 'plasterer')],
+    insulation: [nameRow(3, 'Aurora Insulation Pros', 'craft', 'insulation')],
+    acoustic: [nameRow(4, 'Acoustic Guitar Shop', 'shop', 'musical_instrument')],
+  }
+  const tagged = { elements: [{ type: 'node', id: 1, lat: 30.271, lon: -97.741, tags: { name: 'Total Plastering', craft: 'plasterer' } }] }
+  let place = 0
+  const req = () => ({ location: `Drywall Town ${++place}`, category: 'drywall' as const, radiusKm: 5, limit: 10 })
+  function stubDrywall(overpass: () => Response) {
+    stub((url) => {
+      const u = new URL(url)
+      if (!u.hostname.includes('nominatim')) return overpass()
+      if (!u.searchParams.has('bounded')) return okJson(geo)
+      return okJson(byTerm[u.searchParams.get('q') ?? ''] ?? [])
+    })
+  }
+
+  it('adds name matches to the Overpass results, dedupes them and drops other businesses', async () => {
+    stubDrywall(() => okJson(tagged))
+    const r = await searchBusinesses(req(), { sleep: async () => {} })
+    expect('leads' in r && r.source).toBe('overpass')
+    expect('leads' in r && r.leads.map((l) => l.name).sort()).toEqual(['Aurora Insulation Pros', 'Rocky Mountain Drywall', 'Total Plastering'])
+    const searched = calls.filter((c) => c.includes('bounded=1')).map((c) => new URL(c).searchParams.get('q'))
+    expect(searched).toEqual(['drywall', 'acoustic', 'ceiling', 'insulation'])
+    expect(calls.find((c) => c.includes('bounded=1'))).toContain('viewbox=')
+  })
+  it('still returns name matches, with a notice, when every Overpass mirror fails', async () => {
+    stubDrywall(() => new Response('busy', { status: 503 }))
+    const r = await searchBusinesses(req(), { sleep: async () => {} })
+    expect(r).toMatchObject({ source: 'nominatim', notice: expect.stringContaining('name search') })
+    expect('leads' in r && r.leads).toHaveLength(3)
+  })
+  it('says the servers are busy when Overpass and the name search both fail', async () => {
+    stub((url) => (new URL(url).searchParams.has('bounded') || !url.includes('nominatim') ? new Response('busy', { status: 503 }) : okJson(geo)))
+    const r = await searchBusinesses(req(), { sleep: async () => {} })
+    expect(r).toMatchObject({ status: 502, error: 'Map data servers are busy. Please try again in a minute.' })
+  })
+  it('does not run a name search for categories without name terms', async () => {
+    stub((url) => (url.includes('nominatim') ? okJson(geo) : okJson(elements)))
+    await searchBusinesses({ location: 'No Name Town', category: 'cafes', radiusKm: 5, limit: 10 }, { sleep: async () => {} })
+    expect(calls.some((c) => c.includes('bounded=1'))).toBe(false)
   })
 })

@@ -12,15 +12,13 @@ export type CategoryDef = {
   // Nominatim only understands OSM "special phrases" (not free text); each term was checked live.
   // An empty list means no phrase works, so the fallback cannot search this category.
   nominatimTerms: string[]
-  // How long the first Overpass mirror may take, for categories whose query is slow (default 15s).
-  overpassTimeoutMs?: number
+  // Extra selectors used only to recognise a business as this category, never sent to Overpass
+  // (matching on name over a whole area is too slow there).
+  nameSelectors?: string[]
+  // Words searched by name with Nominatim inside the search area, alongside Overpass. Results are
+  // kept only when they match this category. Also used when Overpass is down.
+  nameSearchTerms?: string[]
 }
-
-// Matching on name across every company/craft is slow, so "Any business" leaves these out.
-const DRYWALL_BY_NAME = [
-  '["craft"~"."]["name"~"drywall|acoustic|ceiling|framing",i]',
-  '["office"~"."]["name"~"drywall|acoustic|ceiling|framing",i]',
-]
 
 const SPECIFIC: CategoryDef[] = [
   { id: 'restaurants', label: 'Restaurants', singular: 'Restaurant', selectors: ['["amenity"~"^(restaurant|fast_food)$"]'], nominatimTerms: ['restaurant'] },
@@ -30,20 +28,18 @@ const SPECIFIC: CategoryDef[] = [
   { id: 'auto_repair', label: 'Auto repair', singular: 'Auto repair shop', selectors: ['["shop"~"^(car_repair|tyres)$"]'], nominatimTerms: ['car repair'] },
   { id: 'dentists', label: 'Dentists', singular: 'Dentist', selectors: ['["amenity"="dentist"]', '["healthcare"="dentist"]'], nominatimTerms: ['dentist'] },
   { id: 'fitness', label: 'Gyms & fitness', singular: 'Gym', selectors: ['["leisure"="fitness_centre"]', '["amenity"="dojo"]'], nominatimTerms: ['martial arts', 'sports centre'] },
-  // Listed before trades so plasterers are labelled as drywall. Many drywall and acoustical
-  // ceiling firms are tagged only as a generic company/office, so they are also matched by name.
-  // No Nominatim phrase finds them ("plasterer", "drywall", "insulation" and "ceiling" return nothing).
+  // Listed before trades so plasterers are labelled as drywall. Many drywall firms are tagged only
+  // as a generic company/office, so they are found by name: in Denver the tag query found 2, the
+  // name search 5 more. No Nominatim phrase works ("plasterer near X" etc. return nothing), and
+  // "framing" is not searched by name because it returns picture framers.
   {
     id: 'drywall',
     label: 'Drywall, ceilings & framing',
     singular: 'Drywall & ceiling contractor',
-    selectors: [
-      '["craft"~"^(drywall|drywall_contractor|plasterer|ceiling|insulation|framing|dry_lining)$"]',
-      ...DRYWALL_BY_NAME,
-    ],
+    selectors: ['["craft"~"^(drywall|drywall_contractor|plasterer|ceiling|insulation|framing|dry_lining)$"]'],
+    nameSelectors: ['["craft"~"."]["name"~"drywall|acoustic|ceiling|framing",i]', '["office"~"."]["name"~"drywall|acoustic|ceiling|framing",i]'],
+    nameSearchTerms: ['drywall', 'acoustic', 'ceiling', 'insulation'],
     nominatimTerms: [],
-    // The name matching takes 12-17s on overpass-api.de (measured in Denver at 5 and 25 km).
-    overpassTimeoutMs: 25000,
   },
   {
     id: 'trades',
@@ -71,7 +67,7 @@ export const CATEGORIES: CategoryDef[] = [
     id: 'any',
     label: 'Any business',
     singular: 'Business',
-    selectors: SPECIFIC.flatMap((c) => c.selectors).filter((s) => !DRYWALL_BY_NAME.includes(s)),
+    selectors: SPECIFIC.flatMap((c) => c.selectors),
     nominatimTerms: ['restaurant', 'cafe', 'hairdresser', 'car repair', 'dentist'],
   },
   ...SPECIFIC,
