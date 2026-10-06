@@ -44,7 +44,7 @@ async function search(user: ReturnType<typeof userEvent.setup>) {
   await user.click(screen.getByRole('button', { name: 'Search' }))
 }
 
-beforeEach(() => { window.localStorage.clear(); browserOverpass.mockReset().mockResolvedValue(null) })
+beforeEach(() => { window.localStorage.clear(); browserOverpass.mockReset().mockResolvedValue({ leads: null, report: 'a.example: busy (504)' }) })
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.restoreAllMocks() })
 
 describe('first run and search flow', () => {
@@ -552,7 +552,7 @@ describe('Overpass from the browser', () => {
   const notice = 'The full map search was unavailable, so these results come from a simpler search.'
 
   it('asks the server to skip Overpass and uses the browser result when it answers', async () => {
-    browserOverpass.mockResolvedValue([GAMMA])
+    browserOverpass.mockResolvedValue({ leads: [GAMMA] })
     stubApi({ source: 'nominatim', notice, leads: [ALPHA, BETA] })
     const user = userEvent.setup()
     render(<App />)
@@ -574,7 +574,7 @@ describe('Overpass from the browser', () => {
     const user = userEvent.setup()
     render(<App />)
     await search(user)
-    expect(await screen.findByText(/full map search was unavailable/)).toBeTruthy()
+    expect(await screen.findByText(/full map search was unavailable.*Map servers: a\.example: busy \(504\)\./)).toBeTruthy()
     expect(screen.getByText('Alpha Cafe')).toBeTruthy()
     expect(browserOverpass).toHaveBeenCalledTimes(1)
   })

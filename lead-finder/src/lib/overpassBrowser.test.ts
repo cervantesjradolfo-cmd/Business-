@@ -13,7 +13,7 @@ describe('browserOverpassSearch', () => {
   it('returns parsed leads from the first mirror that answers', async () => {
     const fetchImpl = vi.fn(async (url: string | URL | Request, _init?: RequestInit) => (String(url) === A ? new Response('busy', { status: 500 }) : ok([cafe(1, 'Beans')])))
     const leads = await browserOverpassSearch(center, req, { mirrors: [A, B], fetchImpl: fetchImpl as typeof fetch })
-    expect(leads?.map((l) => l.name)).toEqual(['Beans'])
+    expect(leads.leads?.map((l) => l.name)).toEqual(['Beans'])
     const init = fetchImpl.mock.calls[0][1] as RequestInit
     expect(init.method).toBe('POST')
     expect(String(init.body)).toMatch(/^data=/)
@@ -32,7 +32,7 @@ describe('browserOverpassSearch', () => {
     try {
       const p = browserOverpassSearch(center, req, { mirrors: [A], fetchImpl: fetchImpl as typeof fetch })
       await vi.advanceTimersByTimeAsync(5000)
-      expect((await p)?.map((l) => l.name)).toEqual(['Third Time'])
+      expect((await p).leads?.map((l) => l.name)).toEqual(['Third Time'])
     } finally {
       vi.useRealTimers()
     }
@@ -40,23 +40,30 @@ describe('browserOverpassSearch', () => {
   })
 
   it('returns null when every mirror fails', async () => {
-    const fetchImpl = vi.fn(async () => new Response('nope', { status: 400 }))
-    expect(await browserOverpassSearch(center, req, { mirrors: [A, B], fetchImpl: fetchImpl as typeof fetch })).toBeNull()
+    const fetchImpl = vi.fn(async (url: string | URL | Request) => (String(url) === A ? new Response('nope', { status: 400 }) : Promise.reject(new TypeError('Failed to fetch'))))
+    vi.useFakeTimers({ toFake: ['setTimeout'] })
+    try {
+      const p = browserOverpassSearch(center, req, { mirrors: [A, B], fetchImpl: fetchImpl as typeof fetch })
+      await vi.advanceTimersByTimeAsync(5000)
+      expect(await p).toEqual({ leads: null, report: 'a.example: error (400), b.example: blocked or unreachable' })
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('treats an empty answer with a remark (server-side timeout) as a failure', async () => {
     const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ elements: [], remark: 'runtime error: timeout' }), { status: 200 }))
-    expect(await browserOverpassSearch(center, req, { mirrors: [A], fetchImpl: fetchImpl as typeof fetch })).toBeNull()
+    expect(await browserOverpassSearch(center, req, { mirrors: [A], fetchImpl: fetchImpl as typeof fetch })).toEqual({ leads: null, report: 'a.example: bad answer' })
   })
 
   it('accepts a genuinely empty answer', async () => {
     const fetchImpl = vi.fn(async () => ok([]))
-    expect(await browserOverpassSearch(center, req, { mirrors: [A], fetchImpl: fetchImpl as typeof fetch })).toEqual([])
+    expect(await browserOverpassSearch(center, req, { mirrors: [A], fetchImpl: fetchImpl as typeof fetch })).toEqual({ leads: [] })
   })
 
   it('gives up when the time budget is too short to start', async () => {
     const fetchImpl = vi.fn(async () => ok([cafe(3, 'Late')]))
-    expect(await browserOverpassSearch(center, req, { mirrors: [A], fetchImpl: fetchImpl as typeof fetch, timeoutMs: 1000 })).toBeNull()
+    expect(await browserOverpassSearch(center, req, { mirrors: [A], fetchImpl: fetchImpl as typeof fetch, timeoutMs: 1000 })).toEqual({ leads: null, report: 'a.example: timed out' })
     expect(fetchImpl).not.toHaveBeenCalled()
   })
 
@@ -67,6 +74,6 @@ describe('browserOverpassSearch', () => {
     }))
     const p = browserOverpassSearch(center, req, { mirrors: [A, B], fetchImpl: fetchImpl as unknown as typeof fetch, signal: ctrl.signal })
     ctrl.abort()
-    expect(await p).toBeNull()
+    expect((await p).leads).toBeNull()
   })
 })

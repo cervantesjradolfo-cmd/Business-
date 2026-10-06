@@ -99,7 +99,8 @@ export default function App() {
       if (res.source === 'nominatim') {
         const full = await browserOverpassSearch(res.center, req, { signal: ctrl.signal })
         if (!live()) return
-        if (full) res = { center: res.center, leads: full, source: 'overpass' }
+        if (full.leads) res = { center: res.center, leads: full.leads, source: 'overpass' }
+        else if (res.notice) res = { ...res, notice: `${res.notice} Map servers: ${full.report}.` }
       }
       setLeads(res.leads)
       setNotice(res.notice)
