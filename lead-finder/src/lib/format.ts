@@ -4,6 +4,19 @@ const usd = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD',
 
 export const formatUsd = (n: number): string => usd.format(n)
 
+// 44919084 -> "$44.9M", 650000 -> "$650K", 8456 -> "$8,456"
+export function formatCost(n: number): string {
+  if (n >= 1e6) return `$${(n / 1e6).toFixed(n >= 1e7 ? 0 : 1).replace(/\.0$/, '')}M`
+  if (n >= 1e5) return `$${Math.round(n / 1e3)}K`
+  return formatUsd(n)
+}
+
+// "2026-10-06" -> "Oct 6, 2026"
+export function formatDate(iso: string): string {
+  const d = new Date(`${iso}T12:00:00Z`)
+  return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' })
+}
+
 export function formatRange(r: { min: number; max: number }): string {
   return `${formatUsd(r.min)}–${formatUsd(r.max)}`
 }

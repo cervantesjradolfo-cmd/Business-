@@ -24,10 +24,24 @@ const HEADER = [
   'Website', 'Address', 'Opening hours', 'Distance km', 'Latitude', 'Longitude', 'OpenStreetMap', 'Status', 'Notes',
 ]
 
-export function leadsToCsv(leads: ScoredLead[], saved: Record<string, SavedLead>): string {
-  const rows: (string | number | undefined)[][] = [HEADER]
+// Client profiles don't sell websites, so their export leaves out score, gaps and deal value.
+const CLIENT_HEADER = [
+  'Name', 'Category', 'Phone', 'Email', 'Website', 'Address', 'Opening hours', 'Distance km', 'Latitude', 'Longitude',
+  'OpenStreetMap', 'Project', 'Permit', 'Permit issued', 'Reported cost USD', 'Status', 'Notes',
+]
+
+export function leadsToCsv(leads: ScoredLead[], saved: Record<string, SavedLead>, client = false): string {
+  const rows: (string | number | undefined)[][] = [client ? CLIENT_HEADER : HEADER]
   for (const l of leads) {
     const s = saved[l.id]
+    if (client) {
+      rows.push([
+        l.name, l.category, l.phone, l.email, l.website, l.address, l.openingHours,
+        l.distanceKm, l.lat, l.lon, l.osmUrl, l.project?.description, l.project?.permit, l.project?.issued, l.project?.cost,
+        STATUS_LABELS[s?.status ?? 'new'], s?.notes ?? '',
+      ])
+      continue
+    }
     rows.push([
       l.name, l.category, l.score,
       l.gaps.map((g) => g.label).join('; '),

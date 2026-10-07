@@ -2,39 +2,96 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { SearchX, Target, Bookmark } from 'lucide-react'
 import clsx from 'clsx'
 import { DEMO_AUDITS, DEMO_LEADS } from './data/demo'
-import { ApiUnavailableError, auditLeads, fetchPitch, searchLeads } from './lib/api'
+import { ApiUnavailableError, auditLeads, fetchPitch, searchLeads, searchProjects } from './lib/api'
 import { csvFilename, leadsToCsv } from './lib/csv'
-import { applyFilters, sortLeads } from './lib/filters'
+import { applyFilters, sortByContact, sortLeads } from './lib/filters'
 import { toLead } from './lib/format'
 import { buildTemplatePitch } from './lib/pitch'
 import { scoreLead } from './lib/scoring'
-import { useSavedLeads, useSender } from './lib/storage'
-import type { AuditResult, Filters as FiltersState, Lead, Pitch, PitchRequest, ScoredLead, SearchRequest, Sender } from './lib/types'
+import { EMPTY_SENDER, savedKey, useProfiles, useSavedLeads, useSender } from './lib/storage'
+import type { AuditResult, ClientProfile, Filters as FiltersState, Lead, Pitch, PitchRequest, ProjectsRequest, ScoredLead, SearchRequest, Sender } from './lib/types'
 import ApiNotice from './components/ApiNotice'
 import DemoBanner from './components/DemoBanner'
 import EmptyState from './components/EmptyState'
 import Filters from './components/Filters'
-import Header from './components/Header'
+import Header, { NEW_PROFILE } from './components/Header'
 import LeadDetail from './components/LeadDetail'
 import LeadList from './components/LeadList'
 import ProgressBar from './components/ProgressBar'
 import SearchForm from './components/SearchForm'
-import SenderSettings from './components/SenderSettings'
+import SenderSettings, { type ProfileDraft } from './components/SenderSettings'
 
 type Phase = 'idle' | 'searching' | 'auditing' | 'done' | 'error' | 'unavailable'
 
 const BATCH = 8
 
-function pitchRequest(l: ScoredLead, sender: Sender): PitchRequest {
+function pitchRequest(l: ScoredLead, sender: Sender, profile?: ClientProfile): PitchRequest {
   return {
     lead: { name: l.name, category: l.category, city: l.city, website: l.website },
     gaps: l.gaps.map((g) => g.id),
     services: l.services,
     sender,
+    ...(profile ? { offer: { services: profile.offer, sellingPoints: profile.sellingPoints } } : {}),
+    ...(l.project ? { project: { address: l.project.address, description: l.project.description, issued: l.project.issued } } : {}),
   }
 }
 
+// Owns the profiles. The workspace below is remounted per profile, so each profile starts with
+// a fresh search and reads its own saved leads.
 export default function App() {
+  const { profiles, active, select, saveProfile, deleteProfile } = useProfiles()
+  const [agencySender, setAgencySender] = useSender()
+  const [draft, setDraft] = useState<ProfileDraft | null>(null)
+  const [settingsOpen, setSettingsOpen] = useState(false)
+
+  function openSettings() {
+    setDraft(active ? { profile: active, isNew: false } : null)
+    setSettingsOpen(true)
+  }
+  function selectProfile(id: string) {
+    if (id !== NEW_PROFILE) return select(id)
+    setDraft({ profile: { id: '', label: '', offer: '', sellingPoints: '', categories: [], projectKeywords: [], sender: EMPTY_SENDER }, isNew: true })
+    setSettingsOpen(true)
+  }
+
+  return (
+    <>
+      <Workspace
+        key={active?.id ?? ''}
+        profile={active}
+        sender={active ? active.sender : agencySender}
+        header={{ profiles, activeId: active?.id ?? '', onSelectProfile: selectProfile }}
+        settingsOpen={settingsOpen}
+        onOpenSettings={openSettings}
+      />
+      {settingsOpen && (
+        <SenderSettings
+          sender={draft ? draft.profile.sender : agencySender}
+          draft={draft ?? undefined}
+          takenIds={profiles.map((p) => p.id)}
+          onSave={(sender, profile) => {
+            if (!profile) return setAgencySender(sender)
+            saveProfile({ ...profile, sender })
+            select(profile.id)
+          }}
+          onDelete={draft && !draft.isNew ? () => deleteProfile(draft.profile.id) : undefined}
+          onClose={() => setSettingsOpen(false)}
+        />
+      )}
+    </>
+  )
+}
+
+type WorkspaceProps = {
+  profile?: ClientProfile
+  sender: Sender
+  header: { profiles: ClientProfile[]; activeId: string; onSelectProfile: (id: string) => void }
+  settingsOpen: boolean
+  onOpenSettings: () => void
+}
+
+function Workspace({ profile, sender, header, settingsOpen, onOpenSettings }: WorkspaceProps) {
+  const client = !!profile
   const [leads, setLeads] = useState<Lead[]>([])
   const [audits, setAudits] = useState<Record<string, AuditResult>>({})
   const [pending, setPending] = useState<Set<string>>(new Set())
@@ -46,12 +103,10 @@ export default function App() {
   const [tab, setTab] = useState<'results' | 'saved'>('results')
   const [filters, setFilters] = useState<FiltersState>({ minScore: 0, noWebsiteOnly: false, hasPhone: false, showChains: false })
   const [selectedId, setSelectedId] = useState<string | undefined>()
-  const [settingsOpen, setSettingsOpen] = useState(false)
   const [pitches, setPitches] = useState<Record<string, Pitch>>({})
   const [pitchLoading, setPitchLoading] = useState(false)
 
-  const { saved, save, remove, setStatus, setNotes, setPitch } = useSavedLeads()
-  const [sender, setSender] = useSender()
+  const { saved, save, remove, setStatus, setNotes, setPitch } = useSavedLeads(savedKey(profile?.id))
   const runRef = useRef<AbortController | null>(null)
   const requested = useRef<Set<string>>(new Set())
 
@@ -60,16 +115,19 @@ export default function App() {
   const savedScored = useMemo(() => Object.values(saved).map((s) => scoreLead(s.lead, s.audit)), [saved])
   const allScored = tab === 'results' ? resultScored : savedScored
   // Chains are hidden by default in results; leads the user saved are always listed.
-  const visible = useMemo(
-    () => sortLeads(applyFilters(allScored, tab === 'saved' ? { ...filters, showChains: true } : filters)),
-    [allScored, filters, tab],
-  )
+  // Client profiles don't use website gaps, so their leads are ranked by how easy they are to reach.
+  const visible = useMemo(() => {
+    const f = { ...filters, ...(tab === 'saved' ? { showChains: true } : {}), ...(client ? { minScore: 0, noWebsiteOnly: false } : {}) }
+    const list = applyFilters(allScored, f)
+    return client ? sortByContact(list) : sortLeads(list)
+  }, [allScored, filters, tab, client])
   const chainCount = useMemo(() => allScored.filter((l) => l.isChain).length, [allScored])
   const selected = selectedId ? allScored.find((l) => l.id === selectedId) : undefined
   const savedCount = Object.keys(saved).length
 
   // ---- search ----
-  const runSearch = useCallback(async (req: SearchRequest) => {
+  // Runs a business search or a project search; both return leads and an optional notice.
+  const runSearch = useCallback(async (load: (signal: AbortSignal) => Promise<{ leads: Lead[]; notice?: string }>) => {
     runRef.current?.abort()
     const ctrl = new AbortController()
     runRef.current = ctrl
@@ -83,12 +141,13 @@ export default function App() {
     setSelectedId(undefined)
     setProgress({ done: 0, total: 0 })
     try {
-      const res = await searchLeads(req, ctrl.signal)
+      const res = await load(ctrl.signal)
       if (!live()) return
       setLeads(res.leads)
       setNotice(res.notice)
       setTab('results')
-      const withSite = res.leads.filter((l) => l.website?.trim())
+      // Client profiles don't pitch websites, so there is nothing to audit (project leads have no website).
+      const withSite = client ? [] : res.leads.filter((l) => l.website?.trim())
       setPending(new Set(withSite.map((l) => l.id)))
       setProgress({ done: 0, total: withSite.length })
       if (withSite.length === 0) {
@@ -119,7 +178,7 @@ export default function App() {
         setPhase('error')
       }
     }
-  }, [])
+  }, [client])
 
   function enterDemo() {
     runRef.current?.abort()
@@ -146,7 +205,7 @@ export default function App() {
   // ---- export ----
   function exportCsv() {
     if (visible.length === 0) return
-    const blob = new Blob([leadsToCsv(visible, saved)], { type: 'text/csv;charset=utf-8' })
+    const blob = new Blob([leadsToCsv(visible, saved, client)], { type: 'text/csv;charset=utf-8' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
@@ -179,7 +238,7 @@ export default function App() {
     if (!selected || isDemoLead || selectedPending || !selectedKey) return
     if (requested.current.has(selectedKey) || saved[selectedKey]?.pitch || pitches[selectedKey]) return
     requested.current.add(selectedKey)
-    const req = pitchRequest(selected, sender)
+    const req = pitchRequest(selected, sender, profile)
     fetchPitch(req)
       .then((p) => {
         setPitches((prev) => ({ ...prev, [selectedKey]: p }))
@@ -194,13 +253,13 @@ export default function App() {
     const stored = pitches[selected.id] ?? saved[selected.id]?.pitch
     // Template pitches are rebuilt from the current sender details; AI pitches are kept as written.
     if (stored && stored.source === 'ai') return stored
-    return buildTemplatePitch(pitchRequest(selected, sender))
-  }, [selected, pitches, saved, sender])
+    return buildTemplatePitch(pitchRequest(selected, sender, profile))
+  }, [selected, pitches, saved, sender, profile])
 
   async function regenerate() {
     if (!selected) return
     const id = selected.id
-    const req = pitchRequest(selected, sender)
+    const req = pitchRequest(selected, sender, profile)
     setPitchLoading(true)
     try {
       const p = selected.isDemo ? buildTemplatePitch(req) : await fetchPitch(req)
@@ -223,7 +282,13 @@ export default function App() {
         ? <EmptyState icon={<Bookmark className="h-8 w-8" />} title="No saved leads yet">Open a lead and press Save to keep it here across searches.</EmptyState>
         : <EmptyState icon={<SearchX className="h-8 w-8" />} title="No saved leads match these filters" />
     } else if (phase === 'idle') {
-      emptyView = <EmptyState icon={<Target className="h-8 w-8" />} title="Search a town and category to find leads">Lead Finder lists local businesses and shows what they are missing online.</EmptyState>
+      emptyView = profile
+        ? <EmptyState icon={<Target className="h-8 w-8" />} title={`Find customers for ${profile.label}`}>
+            {profile.projectKeywords.length > 0
+              ? `Search a town to list active jobs that need ${profile.label}'s kind of work, or businesses that could hire them. Each comes with a pitch written as ${profile.label}.`
+              : `Search a town to list businesses that could hire ${profile.label}, with a pitch written as ${profile.label}.`}
+          </EmptyState>
+        : <EmptyState icon={<Target className="h-8 w-8" />} title="Search a town and category to find leads">Lead Finder lists local businesses and shows what they are missing online.</EmptyState>
     } else if (leads.length === 0) {
       emptyView = <EmptyState icon={<SearchX className="h-8 w-8" />} title="No businesses found">No businesses found. Try a bigger radius or 'Any business'.</EmptyState>
     } else {
@@ -237,10 +302,15 @@ export default function App() {
       <Header
         tab={tab} onTab={(t) => { setTab(t); setSelectedId(undefined) }}
         resultsCount={leads.length} savedCount={savedCount}
-        canExport={visible.length > 0} onExport={exportCsv} onSettings={() => setSettingsOpen(true)}
+        canExport={visible.length > 0} onExport={exportCsv} onSettings={onOpenSettings}
+        {...header}
       />
       <main className="mx-auto w-full max-w-7xl flex-1 space-y-3 px-4 py-4">
-        <SearchForm onSearch={runSearch} searching={searching} demo={mode === 'demo'} />
+        <SearchForm
+          onSearch={(req: SearchRequest) => runSearch((signal) => searchLeads(req, signal))}
+          onSearchProjects={(req: ProjectsRequest) => runSearch((signal) => searchProjects(req, signal))}
+          searching={searching} demo={mode === 'demo'} profile={profile}
+        />
         {searching && <ProgressBar phase={phase === 'searching' ? 'searching' : 'auditing'} done={progress.done} total={progress.total} />}
         {phase === 'unavailable' && <ApiNotice kind="unavailable" onDemo={enterDemo} />}
         {phase === 'error' && <ApiNotice kind="error" message={error} />}
@@ -248,12 +318,12 @@ export default function App() {
           <p role="status" className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">{notice}</p>
         )}
 
-        {(allScored.length > 0 || tab === 'saved') && <Filters filters={filters} onChange={setFilters} shown={visible.length} total={allScored.length} chainCount={tab === 'results' ? chainCount : 0} />}
+        {(allScored.length > 0 || tab === 'saved') && <Filters client={client} filters={filters} onChange={setFilters} shown={visible.length} total={allScored.length} chainCount={tab === 'results' ? chainCount : 0} />}
 
         <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_420px]">
           <div className="min-w-0">
             {emptyView}
-            {visible.length > 0 && <LeadList leads={visible} selectedId={selectedId} saved={saved} onSelect={setSelectedId} />}
+            {visible.length > 0 && <LeadList leads={visible} selectedId={selectedId} saved={saved} onSelect={setSelectedId} client={client} />}
           </div>
           <aside
             className={clsx(
@@ -269,12 +339,13 @@ export default function App() {
                 pitch={currentPitch}
                 pitchLoading={pitchLoading}
                 senderMissing={senderMissing}
+                profile={profile}
                 onClose={() => setSelectedId(undefined)}
                 onToggleSave={() => (saved[selected.id] ? remove(selected.id) : save(toLead(selected), selected.audit))}
                 onStatus={(s) => setStatus(toLead(selected), selected.audit, s)}
                 onNotes={(n) => setNotes(toLead(selected), selected.audit, n)}
                 onRegenerate={regenerate}
-                onOpenSettings={() => setSettingsOpen(true)}
+                onOpenSettings={onOpenSettings}
               />
             ) : (
               'Select a lead to see details'
@@ -285,7 +356,6 @@ export default function App() {
       <footer className="border-t border-slate-200 bg-white py-3 text-center text-xs text-slate-500">
         <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer" className="hover:underline">Map data © OpenStreetMap contributors</a>
       </footer>
-      {settingsOpen && <SenderSettings sender={sender} onSave={setSender} onClose={() => setSettingsOpen(false)} />}
     </div>
   )
 }

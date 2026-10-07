@@ -44,7 +44,80 @@ function serviceLabels(services: ServiceId[], hasGaps: boolean): string[] {
   return list.map((s) => lowerLabel(PRICING[s].label))
 }
 
+// "2026-10-06" -> "Oct 6"
+function formatDay(iso: string): string {
+  const d = new Date(`${iso}T12:00:00Z`)
+  return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })
+}
+
+// The first clause of a permit description, lower-cased, at most ~90 characters.
+function shortWork(description: string): string {
+  const first = description.split(/[.;]/)[0].trim()
+  const cut = first.length > 90 ? `${first.slice(0, 90).replace(/\s+\S*$/, '')}…` : first
+  return cut.charAt(0).toLowerCase() + cut.slice(1)
+}
+
+// For a client profile: an intro from the client's business to a business that could hire them.
+function buildClientPitch(req: PitchRequest, offer: NonNullable<PitchRequest['offer']>): Pitch {
+  const name = req.lead.name.trim()
+  const senderName = req.sender.name.trim() || '[Your name]'
+  const senderBusiness = req.sender.business.trim() || '[Your business]'
+  const services = offer.services.trim() || '[what you do]'
+  const points = offer.sellingPoints?.trim()
+  const place = req.lead.city?.trim() || 'the area'
+  const who = plural(req.lead.category || 'business')
+  const sig = emailSignature({ ...req.sender, name: senderName, business: senderBusiness })
+
+  const job = req.project
+  const lines = [`Hi ${name} team,`, '']
+  if (job) {
+    lines.push(
+      `I saw the permit${job.issued ? ` issued ${formatDay(job.issued)}` : ''} for the work at ${job.address}${job.description ? ` (${shortWork(job.description)})` : ''}.`,
+      '',
+      `I'm ${senderName} with ${senderBusiness}. We do ${services}, and we'd like to bid that scope if you're still lining up subs.`,
+    )
+  } else {
+    lines.push(`I'm ${senderName} with ${senderBusiness}. We do ${services}, and I'm reaching out to ${who} in ${place} that may need a dependable crew for upcoming projects.`)
+  }
+  if (points) lines.push('', points)
+  lines.push(
+    '',
+    job
+      ? "I'd be glad to send our details or put together a number for that job, and for anything else you have coming up."
+      : "If you have work coming up, or want another crew to call when your schedule gets tight, I'd be glad to send our details or put together a bid.",
+    'Would you be open to a quick call this week?',
+    '',
+    sig,
+    '',
+    OPT_OUT_EMAIL,
+  )
+
+  const smsWith = (n: string, what: string) =>
+    `Hi ${n}, this is ${senderName} with ${senderBusiness}. ${what} in ${place}. Anything coming up we could bid on? ${OPT_OUT_SMS}`
+  const short = name.length > 40 ? `${name.slice(0, 40)}…` : name
+  let sms: string
+  if (job) {
+    const jobSms = (n: string, what: string) =>
+      `Hi ${n}, this is ${senderName} with ${senderBusiness}. Saw your permit at ${job.address}. ${what}. Could we bid it? ${OPT_OUT_SMS}`
+    sms = jobSms(name, `We do ${services}`)
+    if (sms.length > SMS_MAX) sms = jobSms(short, `We do ${services}`)
+    if (sms.length > SMS_MAX) sms = jobSms(short, 'We do interior work')
+  } else {
+    sms = smsWith(name, `We do ${services} and are taking on projects`)
+    if (sms.length > SMS_MAX) sms = smsWith(short, `We do ${services} and are taking on projects`)
+    if (sms.length > SMS_MAX) sms = smsWith(short, "We're taking on projects")
+  }
+
+  const phoneOpener = job
+    ? `Hi, is this ${name}? This is ${senderName} with ${senderBusiness}. I'll be quick: I saw your permit for the job at ${job.address}. We do ${services}. Are you still taking bids for that scope?`
+    : `Hi, is this ${name}? This is ${senderName} with ${senderBusiness}. I'll be quick: we do ${services} for ${who} around ${place}. Do you have any projects coming up where you could use a reliable crew?`
+  const subject = job ? `${cap(services)} for ${job.address}` : `${cap(services)} for your next project`
+
+  return { email: { subject, body: lines.join('\n') }, sms, phoneOpener, source: 'template' }
+}
+
 export function buildTemplatePitch(req: PitchRequest): Pitch {
+  if (req.offer) return buildClientPitch(req, req.offer)
   const name = req.lead.name.trim()
   const senderName = req.sender.name.trim() || '[Your name]'
   const senderBusiness = req.sender.business.trim() || '[Your business]'

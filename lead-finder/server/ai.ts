@@ -15,6 +15,18 @@ const SYSTEM_PROMPT = `You are a friendly local-business consultant writing cold
 - No emojis.
 Reply with JSON only: subject, emailBody, sms, phoneOpener.`
 
+// For client profiles: the sender is a trade business introducing itself to a possible customer.
+const CLIENT_PROMPT = `You write short, honest cold outreach from a local business to another business that could hire it (for example a general contractor, property manager or architect).
+- Mention the recipient by name and the kind of business they are.
+- Say what the sender does, using the services given, and offer to bid on or help with upcoming projects.
+- If a project is given, it comes from a public building permit: mention its address and kind of work, and offer to bid that scope.
+- Use only the selling points given. Never invent licences, years in business, past clients, reviews, statistics or prices.
+- Email body: under 120 words, with a greeting, but no signature and no opt-out line (the code adds them).
+- SMS: under 250 characters, no opt-out text (the code adds it).
+- Phone opener: 2-4 sentences.
+- No emojis.
+Reply with JSON only: subject, emailBody, sms, phoneOpener.`
+
 const SCHEMA = {
   type: 'object',
   properties: {
@@ -39,15 +51,21 @@ export async function aiPitch(req: PitchRequest): Promise<Pitch | null> {
       .sort((a, b) => b.weight - a.weight)
       .slice(0, 3)
       .map((g) => ({ label: g.label, phrase: g.phrase }))
-    const userMessage = JSON.stringify({
-      business: req.lead.name,
-      category: req.lead.category,
-      city: req.lead.city,
-      website: req.lead.website,
-      gaps,
-      services: req.services.map((s) => PRICING[s]?.label).filter(Boolean),
-      sender: { name: req.sender.name, business: req.sender.business },
-    })
+    const userMessage = req.offer
+      ? JSON.stringify({
+          recipient: { business: req.lead.name, category: req.lead.category, city: req.lead.city, website: req.lead.website },
+          ...(req.project ? { project: req.project } : {}),
+          sender: { name: req.sender.name, business: req.sender.business, services: req.offer.services, sellingPoints: req.offer.sellingPoints },
+        })
+      : JSON.stringify({
+          business: req.lead.name,
+          category: req.lead.category,
+          city: req.lead.city,
+          website: req.lead.website,
+          gaps,
+          services: req.services.map((s) => PRICING[s]?.label).filter(Boolean),
+          sender: { name: req.sender.name, business: req.sender.business },
+        })
     const msg = await client.beta.messages.create(
       {
         model: 'claude-opus-5-5',
@@ -55,7 +73,7 @@ export async function aiPitch(req: PitchRequest): Promise<Pitch | null> {
         output_config: { effort: 'low', format: { type: 'json_schema', schema: SCHEMA } },
         betas: ['server-side-fallback-2026-07-01'],
         fallbacks: 'default',
-        system: [{ type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } }],
+        system: [{ type: 'text', text: req.offer ? CLIENT_PROMPT : SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } }],
         messages: [{ role: 'user', content: userMessage }],
       },
       { timeout: 20000 },

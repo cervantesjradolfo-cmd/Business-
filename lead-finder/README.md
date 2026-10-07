@@ -50,6 +50,29 @@ signed-out request is refused. It needs these environment variables:
 
 Re-run it after code changes to redeploy. Enter the access key in the app under "Your details".
 
+## Client profiles
+
+Lead Finder can also find customers for your clients. Pick a profile in **Finding leads for** at the top:
+
+- **My agency** (the default) finds businesses that are missing websites, booking and so on, and pitches your services.
+- **A client profile** (for example **Asher Construction**, which does drywall, metal framing and acoustic ceilings) searches the kinds of businesses that hire that client, such as general contractors and builders, property managers and architects. The pitch is an introduction written as the client. Website checks, scores and deal values are not used. Leads are ranked by how many ways there are to reach them (phone, email, website), then by distance.
+
+### Active projects (Chicago building permits)
+
+A client profile with permit keywords (Asher Construction has them) opens on **Active projects**. It searches the City of Chicago's public building-permit data for recent permits whose description mentions the client's kind of work (for Asher: drywall, framing, acoustic, ceiling, partition, build-out, interior alteration or renovation, gut rehab, new construction). Permits that are only one trade's work (electrical, plumbing, roofing, solar, fences and so on) are left out.
+
+Each permit becomes a lead for the **general contractor running the job**, because that's who hires subcontractors. The lead shows the job site, the work, the permit date, the reported cost and the architect. The pitch names the job and offers to bid that scope. Leads are listed newest first, then by job size.
+
+- **Chicago only for now.** Searches centred more than 30 km from Chicago get a note instead of results. Other cities publish permits too and can be added in `server/permits.ts`.
+- **No phone or email.** Permits don't list the contractor's contact details. Use **Look up** on the lead to find them.
+- **Owners are never shown,** because they can be private homeowners.
+- **Optional:** set `SOCRATA_APP_TOKEN` (free from the Chicago data portal) if searches get throttled. It isn't needed for normal use.
+- Edit the keywords under **Profile details**, "Work to look for in building permits". Leave the field empty to turn project search off for that profile.
+
+Each profile has its own signature details and its own saved leads. Press **Profile details** to change what the client does, their selling points, the customers to search for and who signs the pitches. Choose **+ New client profile…** in the switcher to add another client. Profiles are stored only in your browser, like your saved leads.
+
+Only put true facts in **Selling points**: they go into the pitches as written, and the AI is told not to invent anything beyond them.
+
 ## Environment variables
 
 | Name | What it does |
@@ -57,6 +80,7 @@ Re-run it after code changes to redeploy. Enter the access key in the app under 
 | `ANTHROPIC_API_KEY` | Optional. Turns on AI-written pitches. Without it, templates are used. |
 | `LEADS_CONTACT_EMAIL` | Set this to your own e-mail. It goes in the User-Agent (and the `email` parameter) sent to OpenStreetMap, which asks for a real contact. When unset, the User-Agent is just `LeadFinder/1.0` with no e-mail, and OpenStreetMap may refuse searches ("OpenStreetMap refused the request"). Never use a placeholder like `@example.com`. |
 | `APP_ACCESS_KEY` | Optional but recommended for any public deploy. When set, every API call must send the same value in an `x-access-key` header, otherwise it gets a 401. Enter the key in the app under **Your details**. Leave it unset for local use. |
+| `SOCRATA_APP_TOKEN` | Optional. An app token for the Chicago data portal, used by Active projects. Only needed if permit searches get throttled. |
 | `VITE_API_BASE` | Optional. Front-end only. Points the app at an API on another origin. |
 
 ## Protect your deployment
@@ -85,6 +109,8 @@ The three API endpoints are open to anyone who knows the URL: `/api/pitch` spend
 | Template emails, texts and call openers | `src/lib/pitch.ts` |
 | The AI prompt and model | `server/ai.ts` |
 | The demo dataset | `src/data/demo.ts` |
+| The client profiles that exist on first run | `src/data/profiles.ts` |
+| The client-profile pitch template | `buildClientPitch` in `src/lib/pitch.ts` |
 
 ## Outreach rules
 

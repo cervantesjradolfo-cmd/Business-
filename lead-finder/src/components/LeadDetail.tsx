@@ -1,9 +1,9 @@
 import { ArrowLeft, Bookmark, BookmarkCheck, Clock, Globe, Loader2, Mail, MapPin, Phone } from 'lucide-react'
 import { PRICING } from '../data/pricing'
-import { googleMapsUrl } from '../lib/geo'
-import { formatRange, formatUsd } from '../lib/format'
+import { googleMapsUrl, googleSearchUrl } from '../lib/geo'
+import { formatDate, formatRange, formatUsd } from '../lib/format'
 import { STATUS_LABELS } from '../lib/csv'
-import type { LeadStatus, Pitch, SavedLead, ScoredLead } from '../lib/types'
+import type { ClientProfile, LeadStatus, Pitch, SavedLead, ScoredLead } from '../lib/types'
 import PitchPanel from './PitchPanel'
 import ScoreBadge from './ScoreBadge'
 
@@ -13,6 +13,7 @@ type Props = {
   pitch: Pitch
   pitchLoading: boolean
   senderMissing: boolean
+  profile?: ClientProfile // set when pitching on a client's behalf
   onClose: () => void
   onToggleSave: () => void
   onStatus: (s: LeadStatus) => void
@@ -52,10 +53,26 @@ export default function LeadDetail(p: Props) {
       <div>
         <div className="flex items-start justify-between gap-2">
           <h2 className="text-lg font-bold leading-tight break-words">{lead.name}</h2>
-          <ScoreBadge score={lead.score} />
+          {!p.profile && <ScoreBadge score={lead.score} />}
         </div>
         <p className="mt-1 text-sm text-slate-500">{lead.category} · {lead.distanceKm.toFixed(1)} km away</p>
       </div>
+
+      {lead.project && (
+        <section aria-label="Project" className="space-y-1.5 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm">
+          <h3 className="font-semibold">Project</h3>
+          <p><span className="text-slate-500">Job site: </span>{lead.project.address}, {lead.project.city}</p>
+          <p className="break-words">{lead.project.description}</p>
+          <p className="text-slate-600">
+            Permit {lead.project.permit} · issued {formatDate(lead.project.issued)}
+            {lead.project.cost ? ` · reported cost ${formatUsd(lead.project.cost)}` : ''}
+          </p>
+          {lead.project.architect && <p><span className="text-slate-500">Architect: </span>{lead.project.architect}</p>}
+          <p className="text-xs text-slate-500">
+            From the City of {lead.project.city}'s public building-permit data. The permit doesn't list the contractor's phone or email, so look them up before you reach out.
+          </p>
+        </section>
+      )}
 
       <section className="space-y-2" aria-label="Contact">
         <Row icon={<Phone className="h-4 w-4" />} label="Phone">
@@ -67,57 +84,74 @@ export default function LeadDetail(p: Props) {
         <Row icon={<Globe className="h-4 w-4" />} label="Website">
           {lead.website ? <a className={link} href={webHref(lead.website)} target="_blank" rel="noopener noreferrer">{lead.website}</a> : NOT_LISTED}
         </Row>
-        <Row icon={<MapPin className="h-4 w-4" />} label="Address">
-          {lead.address ? <span className="break-words">{lead.address}</span> : NOT_LISTED}
-        </Row>
-        <Row icon={<Clock className="h-4 w-4" />} label="Opening hours">
-          {lead.openingHours ? <span className="break-words">{lead.openingHours}</span> : NOT_LISTED}
-        </Row>
+        {!lead.project && (
+          <>
+            <Row icon={<MapPin className="h-4 w-4" />} label="Address">
+              {lead.address ? <span className="break-words">{lead.address}</span> : NOT_LISTED}
+            </Row>
+            <Row icon={<Clock className="h-4 w-4" />} label="Opening hours">
+              {lead.openingHours ? <span className="break-words">{lead.openingHours}</span> : NOT_LISTED}
+            </Row>
+          </>
+        )}
         <div className="flex flex-wrap gap-3 pt-1 text-sm">
-          <a className={link} href={googleMapsUrl(lead)} target="_blank" rel="noopener noreferrer">Google Maps</a>
-          <a className={link} href={lead.osmUrl} target="_blank" rel="noopener noreferrer">OpenStreetMap</a>
+          {lead.project ? (
+            <>
+              <a className={link} href={googleSearchUrl(`${lead.name} ${lead.project.city}`)} target="_blank" rel="noopener noreferrer">Look up {lead.name}</a>
+              <a className={link} href={googleMapsUrl({ ...lead, name: lead.project.address, address: lead.project.city })} target="_blank" rel="noopener noreferrer">Job site on Google Maps</a>
+            </>
+          ) : (
+            <>
+              <a className={link} href={googleMapsUrl(lead)} target="_blank" rel="noopener noreferrer">Google Maps</a>
+              <a className={link} href={lead.osmUrl} target="_blank" rel="noopener noreferrer">OpenStreetMap</a>
+            </>
+          )}
         </div>
       </section>
 
-      <section aria-label="Gaps">
-        <h3 className="mb-1 text-sm font-semibold">Gaps found</h3>
-        {lead.auditState === 'pending' && (
-          <p className="mb-1 flex items-center gap-1 text-sm text-slate-500"><Loader2 className="h-4 w-4 animate-spin" aria-hidden />Checking website…</p>
-        )}
-        {lead.gaps.length === 0 && lead.auditState !== 'pending' ? (
-          <p className="text-sm text-slate-500">No gaps found.</p>
-        ) : (
-          <ul className="space-y-1 text-sm">
-            {lead.gaps.map((g) => (
-              <li key={g.id} className="flex flex-wrap items-baseline gap-x-2">
-                <span className="font-medium">{g.label}</span>
-                {g.detail && <span className="text-xs text-slate-500">{g.detail}</span>}
-              </li>
-            ))}
-          </ul>
-        )}
-        {lead.audit?.note && lead.audit.status !== 'unreachable' && <p className="mt-1 text-xs text-slate-500">{lead.audit.note}</p>}
-        {lead.auditState === 'done' && lead.website && !lead.audit && <p className="mt-1 text-xs text-slate-500">Website not checked</p>}
-      </section>
+      {!p.profile && (
+        <>
+          <section aria-label="Gaps">
+            <h3 className="mb-1 text-sm font-semibold">Gaps found</h3>
+            {lead.auditState === 'pending' && (
+              <p className="mb-1 flex items-center gap-1 text-sm text-slate-500"><Loader2 className="h-4 w-4 animate-spin" aria-hidden />Checking website…</p>
+            )}
+            {lead.gaps.length === 0 && lead.auditState !== 'pending' ? (
+              <p className="text-sm text-slate-500">No gaps found.</p>
+            ) : (
+              <ul className="space-y-1 text-sm">
+                {lead.gaps.map((g) => (
+                  <li key={g.id} className="flex flex-wrap items-baseline gap-x-2">
+                    <span className="font-medium">{g.label}</span>
+                    {g.detail && <span className="text-xs text-slate-500">{g.detail}</span>}
+                  </li>
+                ))}
+              </ul>
+            )}
+            {lead.audit?.note && lead.audit.status !== 'unreachable' && <p className="mt-1 text-xs text-slate-500">{lead.audit.note}</p>}
+            {lead.auditState === 'done' && lead.website && !lead.audit && <p className="mt-1 text-xs text-slate-500">Website not checked</p>}
+          </section>
 
-      <section aria-label="Services">
-        <h3 className="mb-1 text-sm font-semibold">Recommended services</h3>
-        {lead.services.length === 0 ? (
-          <p className="text-sm text-slate-500">None.</p>
-        ) : (
-          <ul className="space-y-1 text-sm">
-            {lead.services.map((s) => (
-              <li key={s} className="flex justify-between gap-2">
-                <span>{PRICING[s].label}</span>
-                <span className="shrink-0 text-slate-500">{formatRange(PRICING[s])}</span>
-              </li>
-            ))}
-          </ul>
-        )}
-        <p className="mt-2 rounded-lg bg-indigo-50 px-3 py-2 text-sm font-semibold text-brand">
-          Est. deal value {formatUsd(lead.dealValue.min)}–{formatUsd(lead.dealValue.max)}
-        </p>
-      </section>
+          <section aria-label="Services">
+            <h3 className="mb-1 text-sm font-semibold">Recommended services</h3>
+            {lead.services.length === 0 ? (
+              <p className="text-sm text-slate-500">None.</p>
+            ) : (
+              <ul className="space-y-1 text-sm">
+                {lead.services.map((s) => (
+                  <li key={s} className="flex justify-between gap-2">
+                    <span>{PRICING[s].label}</span>
+                    <span className="shrink-0 text-slate-500">{formatRange(PRICING[s])}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <p className="mt-2 rounded-lg bg-indigo-50 px-3 py-2 text-sm font-semibold text-brand">
+              Est. deal value {formatUsd(lead.dealValue.min)}–{formatUsd(lead.dealValue.max)}
+            </p>
+          </section>
+        </>
+      )}
 
       <section aria-label="Tracking" className="space-y-2">
         <div className="flex flex-wrap items-end gap-3">
@@ -138,7 +172,7 @@ export default function LeadDetail(p: Props) {
         </label>
       </section>
 
-      <PitchPanel pitch={p.pitch} loading={p.pitchLoading} onRegenerate={p.onRegenerate} senderMissing={p.senderMissing} onOpenSettings={p.onOpenSettings} />
+      <PitchPanel pitch={p.pitch} loading={p.pitchLoading} onRegenerate={p.onRegenerate} senderMissing={p.senderMissing} onOpenSettings={p.onOpenSettings} from={p.profile?.label} />
     </div>
   )
 }
