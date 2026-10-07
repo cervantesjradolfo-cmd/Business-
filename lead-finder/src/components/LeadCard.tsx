@@ -1,6 +1,6 @@
 import clsx from 'clsx'
 import { Loader2, MapPin } from 'lucide-react'
-import { formatCost, formatDate, formatRange } from '../lib/format'
+import { formatCost, formatDate, formatMiles, formatRange } from '../lib/format'
 import { STATUS_LABELS } from '../lib/csv'
 import type { LeadStatus, ScoredLead } from '../lib/types'
 import ScoreBadge from './ScoreBadge'
@@ -26,7 +26,7 @@ export default function LeadCard({ lead, selected, status, onSelect, client = fa
           <h3 className="truncate text-sm font-semibold text-slate-900">{lead.name}</h3>
           <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs text-slate-500">
             <span>{lead.project ? `${lead.category} · job at ${lead.project.address}` : lead.category}</span>
-            <span className="inline-flex items-center gap-0.5"><MapPin className="h-3 w-3" aria-hidden />{lead.distanceKm.toFixed(1)} km</span>
+            <span className="inline-flex items-center gap-0.5"><MapPin className="h-3 w-3" aria-hidden />{formatMiles(lead.distanceKm)}</span>
           </p>
         </div>
         {!client && <ScoreBadge score={lead.score} />}

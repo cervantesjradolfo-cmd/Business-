@@ -4,6 +4,11 @@ const usd = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD',
 
 export const formatUsd = (n: number): string => usd.format(n)
 
+// Distances are kept in km (OpenStreetMap and the APIs use metres) and shown in miles.
+export const KM_PER_MILE = 1.609344
+export const kmToMiles = (km: number): number => km / KM_PER_MILE
+export const formatMiles = (km: number): string => `${kmToMiles(km).toFixed(1)} mi`
+
 // 44919084 -> "$44.9M", 650000 -> "$650K", 8456 -> "$8,456"
 export function formatCost(n: number): string {
   if (n >= 1e6) return `$${(n / 1e6).toFixed(n >= 1e7 ? 0 : 1).replace(/\.0$/, '')}M`

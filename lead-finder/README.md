@@ -63,7 +63,7 @@ A client profile with permit keywords (Asher Construction has them) opens on **A
 
 Each permit becomes a lead for the **general contractor running the job**, because that's who hires subcontractors. The lead shows the job site, the work, the permit date, the reported cost and the architect. The pitch names the job and offers to bid that scope. Leads are listed newest first, then by job size.
 
-- **Chicago only for now.** Searches centred more than 30 km from Chicago get a note instead of results. Other cities publish permits too and can be added in `server/permits.ts`.
+- **Chicago only for now.** Searches centred more than about 19 miles (30 km) from Chicago get a note instead of results. Other cities publish permits too and can be added in `server/permits.ts`.
 - **No phone or email.** Permits don't list the contractor's contact details. Use **Look up** on the lead to find them.
 - **Owners are never shown,** because they can be private homeowners.
 - **Optional:** set `SOCRATA_APP_TOKEN` (free from the Chicago data portal) if searches get throttled. It isn't needed for normal use.

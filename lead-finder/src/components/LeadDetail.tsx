@@ -1,7 +1,7 @@
 import { ArrowLeft, Bookmark, BookmarkCheck, Clock, Globe, Loader2, Mail, MapPin, Phone } from 'lucide-react'
 import { PRICING } from '../data/pricing'
 import { googleMapsUrl, googleSearchUrl } from '../lib/geo'
-import { formatDate, formatRange, formatUsd } from '../lib/format'
+import { formatDate, formatMiles, formatRange, formatUsd } from '../lib/format'
 import { STATUS_LABELS } from '../lib/csv'
 import type { ClientProfile, LeadStatus, Pitch, SavedLead, ScoredLead } from '../lib/types'
 import PitchPanel from './PitchPanel'
@@ -55,7 +55,7 @@ export default function LeadDetail(p: Props) {
           <h2 className="text-lg font-bold leading-tight break-words">{lead.name}</h2>
           {!p.profile && <ScoreBadge score={lead.score} />}
         </div>
-        <p className="mt-1 text-sm text-slate-500">{lead.category} · {lead.distanceKm.toFixed(1)} km away</p>
+        <p className="mt-1 text-sm text-slate-500">{lead.category} · {formatMiles(lead.distanceKm)} away</p>
       </div>
 
       {lead.project && (
