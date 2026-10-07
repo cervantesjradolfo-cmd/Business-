@@ -44,7 +44,47 @@ function serviceLabels(services: ServiceId[], hasGaps: boolean): string[] {
   return list.map((s) => lowerLabel(PRICING[s].label))
 }
 
+// For a client profile: an intro from the client's business to a business that could hire them.
+function buildClientPitch(req: PitchRequest, offer: NonNullable<PitchRequest['offer']>): Pitch {
+  const name = req.lead.name.trim()
+  const senderName = req.sender.name.trim() || '[Your name]'
+  const senderBusiness = req.sender.business.trim() || '[Your business]'
+  const services = offer.services.trim() || '[what you do]'
+  const points = offer.sellingPoints?.trim()
+  const place = req.lead.city?.trim() || 'the area'
+  const who = plural(req.lead.category || 'business')
+  const sig = emailSignature({ ...req.sender, name: senderName, business: senderBusiness })
+
+  const lines = [
+    `Hi ${name} team,`,
+    '',
+    `I'm ${senderName} with ${senderBusiness}. We do ${services}, and I'm reaching out to ${who} in ${place} that may need a dependable crew for upcoming projects.`,
+  ]
+  if (points) lines.push('', points)
+  lines.push(
+    '',
+    "If you have work coming up, or want another crew to call when your schedule gets tight, I'd be glad to send our details or put together a bid.",
+    'Would you be open to a quick call this week?',
+    '',
+    sig,
+    '',
+    OPT_OUT_EMAIL,
+  )
+
+  const smsWith = (n: string, what: string) =>
+    `Hi ${n}, this is ${senderName} with ${senderBusiness}. ${what} in ${place}. Anything coming up we could bid on? ${OPT_OUT_SMS}`
+  const short = name.length > 40 ? `${name.slice(0, 40)}…` : name
+  let sms = smsWith(name, `We do ${services} and are taking on projects`)
+  if (sms.length > SMS_MAX) sms = smsWith(short, `We do ${services} and are taking on projects`)
+  if (sms.length > SMS_MAX) sms = smsWith(short, "We're taking on projects")
+
+  const phoneOpener = `Hi, is this ${name}? This is ${senderName} with ${senderBusiness}. I'll be quick: we do ${services} for ${who} around ${place}. Do you have any projects coming up where you could use a reliable crew?`
+
+  return { email: { subject: `${cap(services)} for your next project`, body: lines.join('\n') }, sms, phoneOpener, source: 'template' }
+}
+
 export function buildTemplatePitch(req: PitchRequest): Pitch {
+  if (req.offer) return buildClientPitch(req, req.offer)
   const name = req.lead.name.trim()
   const senderName = req.sender.name.trim() || '[Your name]'
   const senderBusiness = req.sender.business.trim() || '[Your business]'

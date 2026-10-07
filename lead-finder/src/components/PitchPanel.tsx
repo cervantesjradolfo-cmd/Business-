@@ -4,10 +4,11 @@ import { Check, Copy, Loader2, RefreshCw } from 'lucide-react'
 import { copyText } from '../lib/clipboard'
 import type { Pitch } from '../lib/types'
 
-type Props = { pitch: Pitch; loading: boolean; onRegenerate: () => void; senderMissing: boolean; onOpenSettings: () => void }
+// from: the client profile the pitch is written for (absent = your own pitch)
+type Props = { pitch: Pitch; loading: boolean; onRegenerate: () => void; senderMissing: boolean; onOpenSettings: () => void; from?: string }
 type Tab = 'email' | 'sms' | 'call'
 
-export default function PitchPanel({ pitch, loading, onRegenerate, senderMissing, onOpenSettings }: Props) {
+export default function PitchPanel({ pitch, loading, onRegenerate, senderMissing, onOpenSettings, from }: Props) {
   const [tab, setTab] = useState<Tab>('email')
   const [copied, setCopied] = useState(false)
   const [failed, setFailed] = useState(false)
@@ -39,12 +40,12 @@ export default function PitchPanel({ pitch, loading, onRegenerate, senderMissing
   return (
     <section aria-label="Pitch" className="space-y-2">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h3 className="text-sm font-semibold text-slate-800">Pitch</h3>
+        <h3 className="text-sm font-semibold text-slate-800">{from ? `Pitch from ${from}` : 'Pitch'}</h3>
         <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">{pitch.source === 'ai' ? 'Written by AI' : 'Template'}</span>
       </div>
       {senderMissing && (
         <button type="button" onClick={onOpenSettings} className="w-full rounded-lg bg-amber-50 px-3 py-2 text-left text-xs text-amber-800 hover:bg-amber-100">
-          Add your details so pitches are signed and CAN-SPAM-compliant
+          {from ? `Add ${from}'s details so pitches are signed and CAN-SPAM-compliant` : 'Add your details so pitches are signed and CAN-SPAM-compliant'}
         </button>
       )}
       <div role="tablist" className="flex gap-1">

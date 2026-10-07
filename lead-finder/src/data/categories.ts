@@ -41,6 +41,18 @@ const SPECIFIC: CategoryDef[] = [
     nameSearchTerms: ['drywall', 'acoustic', 'ceiling', 'insulation'],
     nominatimTerms: [],
   },
+  // Before trades so builders are labelled as general contractors. Builders tagged only as a
+  // generic company are found by name. "construction" is not searched by name: it returns
+  // construction sites. "contractors" is not used either: it returns electricians and roofers.
+  {
+    id: 'general_contractors',
+    label: 'General contractors & builders',
+    singular: 'General contractor',
+    selectors: ['["office"~"^(construction_company|contractor|construction)$"]', '["craft"~"^(builder|construction)$"]'],
+    nameSelectors: ['["office"~"."]["name"~"construction|builders|general contract",i]'],
+    nameSearchTerms: ['builders', 'general contractor'],
+    nominatimTerms: [],
+  },
   {
     id: 'trades',
     label: 'Contractors & trades',
@@ -58,6 +70,24 @@ const SPECIFIC: CategoryDef[] = [
     nominatimTerms: ['clothes shop', 'gift shop', 'shoe shop'],
   },
   { id: 'real_estate', label: 'Real estate', singular: 'Real estate agent', selectors: ['["office"="estate_agent"]'], nominatimTerms: ['estate agent'] },
+  {
+    id: 'property_managers',
+    label: 'Property managers',
+    singular: 'Property manager',
+    selectors: ['["office"="property_management"]'],
+    nameSelectors: ['["office"~"."]["name"~"property management|property managers",i]'],
+    nameSearchTerms: ['property management'],
+    nominatimTerms: [],
+  },
+  {
+    id: 'architects',
+    label: 'Architects',
+    singular: 'Architect',
+    selectors: ['["office"="architect"]'],
+    nameSelectors: ['["office"~"."]["name"~"architect",i]'],
+    nameSearchTerms: ['architects'],
+    nominatimTerms: [],
+  },
   { id: 'law', label: 'Law offices', singular: 'Law office', selectors: ['["office"~"^(lawyer|notary)$"]'], nominatimTerms: [] },
   { id: 'medical', label: 'Medical clinics', singular: 'Medical clinic', selectors: ['["amenity"~"^(clinic|doctors)$"]', '["healthcare"~"^(physiotherapist|chiropractor)$"]'], nominatimTerms: ['clinic', 'doctors'] },
 ]

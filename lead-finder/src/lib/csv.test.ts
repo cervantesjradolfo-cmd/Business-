@@ -31,6 +31,12 @@ describe('leadsToCsv', () => {
     expect(lines[1]).toContain('"Won","hi"')
     expect(leadsToCsv([s], {})).toContain('"New",""')
   })
+  it('leaves score, gaps and deal value out for a client profile', () => {
+    const s = scoreLead({ ...lead, phone: '+1 555-0100' })
+    const lines = leadsToCsv([s], { a: { lead, status: 'contacted', notes: 'call back', savedAt: '', updatedAt: '' } }, true).split('\r\n')
+    expect(lines[0]).toBe('\ufeff"Name","Category","Phone","Email","Website","Address","Opening hours","Distance km","Latitude","Longitude","OpenStreetMap","Status","Notes"')
+    expect(lines[1]).toBe('"Foo","Cafe","+1 555-0100","","","1 St","","0.5","1","2","u","Contacted","call back"')
+  })
   it('names the file by date', () => {
     expect(csvFilename(new Date(2026, 0, 5))).toBe('leads-2026-01-05.csv')
   })

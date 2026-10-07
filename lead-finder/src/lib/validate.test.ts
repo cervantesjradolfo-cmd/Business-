@@ -50,3 +50,17 @@ describe('parsePitchRequest', () => {
     expect(r.ok && r.value.lead.city).toBeUndefined()
   })
 })
+
+describe('parsePitchRequest offer', () => {
+  const base = { lead: { name: 'Summit' }, gaps: [], services: [], sender: {} }
+  it('keeps a client offer, trimmed and capped', () => {
+    const r = parsePitchRequest({ ...base, offer: { services: '  drywall  ', sellingPoints: 'x'.repeat(600) } })
+    expect(r.ok && r.value.offer).toEqual({ services: 'drywall', sellingPoints: 'x'.repeat(500) })
+  })
+  it('drops empty selling points and leaves the offer out when not sent', () => {
+    const r = parsePitchRequest({ ...base, offer: { services: 'drywall', sellingPoints: '  ' } })
+    expect(r.ok && r.value.offer).toEqual({ services: 'drywall' })
+    const none = parsePitchRequest(base)
+    expect(none.ok && 'offer' in none.value).toBe(false)
+  })
+})

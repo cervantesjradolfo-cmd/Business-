@@ -65,3 +65,39 @@ describe('finalizeAiPitch', () => {
     expect(finalizeAiPitch({ ...ai, subject: ' ' }, req)).toBeNull()
   })
 })
+
+describe('client profile pitch (template)', () => {
+  const asher = { name: 'Asher', business: 'Asher Construction', email: 'a@asher.example.com', phone: '555-0100', address: '9 Oak St', website: '' }
+  const clientReq: PitchRequest = {
+    lead: { name: 'Summit Construction', category: 'General contractor', city: 'Denver' },
+    gaps: ['no_website'],
+    services: ['website'],
+    sender: asher,
+    offer: { services: 'drywall, metal framing and acoustic ceilings', sellingPoints: 'Licensed and insured.' },
+  }
+  const p = buildTemplatePitch(clientReq)
+  it('introduces the client and what they do, not website gaps', () => {
+    expect(p.email.subject).toBe('Drywall, metal framing and acoustic ceilings for your next project')
+    expect(p.email.body).toContain("I'm Asher with Asher Construction. We do drywall, metal framing and acoustic ceilings, and I'm reaching out to general contractors in Denver")
+    expect(p.email.body).toContain('Licensed and insured.')
+    expect(p.email.body).not.toMatch(/website customers can find/)
+    for (const t of [p.email.body, p.sms, p.phoneOpener]) expect(t).toContain('Summit Construction')
+    expect(p.phoneOpener).toContain('for general contractors around Denver')
+  })
+  it('keeps the signature, opt-outs and SMS length', () => {
+    expect(p.email.body).toContain(emailSignature(asher))
+    expect(p.email.body.endsWith(OPT_OUT_EMAIL)).toBe(true)
+    expect(p.sms.endsWith(OPT_OUT_SMS)).toBe(true)
+    const long = buildTemplatePitch({ ...clientReq, lead: { ...clientReq.lead, name: 'N'.repeat(300) } })
+    expect(long.sms.length).toBeLessThanOrEqual(320)
+    expect(long.sms).toContain('…')
+    const wordy = buildTemplatePitch({ ...clientReq, offer: { services: 'w'.repeat(300) } })
+    expect(wordy.sms.length).toBeLessThanOrEqual(320)
+    expect(wordy.sms).toContain("We're taking on projects in Denver")
+  })
+  it('leaves out empty selling points and fills blanks with placeholders', () => {
+    const bare = buildTemplatePitch({ ...clientReq, sender: { ...asher, name: '', business: '' }, offer: { services: '' }, lead: { name: 'Ridge', category: 'Architect' } })
+    expect(bare.email.body).toContain("I'm [Your name] with [Your business]. We do [what you do], and I'm reaching out to architects in the area")
+    expect(bare.email.body).not.toContain('\n\n\n')
+  })
+})

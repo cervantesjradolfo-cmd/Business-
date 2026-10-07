@@ -1,7 +1,20 @@
 import { useCallback, useEffect, useState } from 'react'
-import type { AuditResult, Lead, LeadStatus, Pitch, SavedLead, Sender } from './types'
+import { getCategory } from '../data/categories'
+import { DEFAULT_PROFILES } from '../data/profiles'
+import type { AuditResult, CategoryId, ClientProfile, Lead, LeadStatus, Pitch, SavedLead, Sender } from './types'
 
-export const STORAGE_KEYS = { saved: 'leadfinder:saved', sender: 'leadfinder:sender', accessKey: 'leadfinder:accessKey' } as const
+export const STORAGE_KEYS = {
+  saved: 'leadfinder:saved',
+  sender: 'leadfinder:sender',
+  accessKey: 'leadfinder:accessKey',
+  profiles: 'leadfinder:profiles',
+  activeProfile: 'leadfinder:activeProfile',
+} as const
+
+// Each client profile keeps its own saved leads; the agency profile keeps the original key.
+export function savedKey(profileId?: string): string {
+  return profileId ? `${STORAGE_KEYS.saved}:${profileId}` : STORAGE_KEYS.saved
+}
 
 // Optional access key for deployments that set APP_ACCESS_KEY. Sent as the x-access-key header.
 export function getAccessKey(): string {
@@ -40,8 +53,8 @@ export function writeJson(key: string, value: unknown): void {
 
 const STATUSES: LeadStatus[] = ['new', 'contacted', 'replied', 'won', 'lost']
 
-export function loadSaved(): Record<string, SavedLead> {
-  const raw = readJson<unknown>(STORAGE_KEYS.saved, {})
+export function loadSaved(key: string = STORAGE_KEYS.saved): Record<string, SavedLead> {
+  const raw = readJson<unknown>(key, {})
   const out: Record<string, SavedLead> = {}
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return out
   for (const [id, v] of Object.entries(raw as Record<string, unknown>)) {
@@ -61,16 +74,17 @@ export function loadSaved(): Record<string, SavedLead> {
   return out
 }
 
-export function useSavedLeads() {
-  const [saved, setSaved] = useState<Record<string, SavedLead>>(loadSaved)
+// The key is fixed for the hook's lifetime: the app remounts its workspace when the profile changes.
+export function useSavedLeads(key: string = STORAGE_KEYS.saved) {
+  const [saved, setSaved] = useState<Record<string, SavedLead>>(() => loadSaved(key))
 
   const update = useCallback((fn: (prev: Record<string, SavedLead>) => Record<string, SavedLead>) => {
     setSaved((prev) => {
       const next = fn(prev)
-      writeJson(STORAGE_KEYS.saved, next)
+      writeJson(key, next)
       return next
     })
-  }, [])
+  }, [key])
 
   const upsert = useCallback(
     (lead: Lead, audit: AuditResult | undefined, patch: Partial<SavedLead>) =>
@@ -121,13 +135,18 @@ export function useSavedLeads() {
   return { saved, save, remove, setStatus, setNotes, setPitch }
 }
 
-const EMPTY_SENDER: Sender = { name: '', business: '', email: '', phone: '', address: '', website: '' }
+export const EMPTY_SENDER: Sender = { name: '', business: '', email: '', phone: '', address: '', website: '' }
+
+const str = (v: unknown) => (typeof v === 'string' ? v : '')
+
+function toSender(raw: unknown): Sender {
+  if (!raw || typeof raw !== 'object') return EMPTY_SENDER
+  const r = raw as Partial<Sender>
+  return { name: str(r.name), business: str(r.business), email: str(r.email), phone: str(r.phone), address: str(r.address), website: str(r.website) }
+}
 
 function loadSender(): Sender {
-  const raw = readJson<Partial<Sender> | null>(STORAGE_KEYS.sender, null)
-  if (!raw || typeof raw !== 'object') return EMPTY_SENDER
-  const s = (v: unknown) => (typeof v === 'string' ? v : '')
-  return { name: s(raw.name), business: s(raw.business), email: s(raw.email), phone: s(raw.phone), address: s(raw.address), website: s(raw.website) }
+  return toSender(readJson<unknown>(STORAGE_KEYS.sender, null))
 }
 
 export function useSender(): [Sender, (s: Sender) => void] {
@@ -145,4 +164,77 @@ export function useSender(): [Sender, (s: Sender) => void] {
     writeJson(STORAGE_KEYS.sender, s)
   }, [])
   return [sender, set]
+}
+
+// ---- client profiles ----
+
+export function loadProfiles(): ClientProfile[] {
+  const raw = readJson<unknown>(STORAGE_KEYS.profiles, null)
+  if (raw === null) return DEFAULT_PROFILES // first run
+  if (!Array.isArray(raw)) return []
+  const out: ClientProfile[] = []
+  for (const v of raw) {
+    const p = v as Partial<ClientProfile> | null
+    if (!p || typeof p !== 'object' || typeof p.id !== 'string' || !p.id || out.some((o) => o.id === p.id)) continue
+    const categories = (Array.isArray(p.categories) ? p.categories : []).filter(
+      (c): c is CategoryId => typeof c === 'string' && c !== 'any' && !!getCategory(c),
+    )
+    out.push({
+      id: p.id,
+      label: str(p.label).trim() || 'Client',
+      offer: str(p.offer),
+      sellingPoints: str(p.sellingPoints),
+      categories,
+      sender: toSender(p.sender),
+    })
+  }
+  return out
+}
+
+export function newProfileId(label: string, taken: string[]): string {
+  const base = label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'client'
+  let id = base
+  for (let n = 2; taken.includes(id); n++) id = `${base}-${n}`
+  return id
+}
+
+export function useProfiles() {
+  const [profiles, setProfiles] = useState<ClientProfile[]>(loadProfiles)
+  // '' = the agency profile
+  const [activeId, setActiveId] = useState<string>(() => readJson<string>(STORAGE_KEYS.activeProfile, ''))
+
+  const write = useCallback((fn: (prev: ClientProfile[]) => ClientProfile[]) => {
+    setProfiles((prev) => {
+      const next = fn(prev)
+      writeJson(STORAGE_KEYS.profiles, next)
+      return next
+    })
+  }, [])
+  const select = useCallback((id: string) => {
+    setActiveId(id)
+    writeJson(STORAGE_KEYS.activeProfile, id)
+  }, [])
+  const saveProfile = useCallback(
+    (p: ClientProfile) => write((prev) => (prev.some((o) => o.id === p.id) ? prev.map((o) => (o.id === p.id ? p : o)) : [...prev, p])),
+    [write],
+  )
+  const deleteProfile = useCallback(
+    (id: string) => {
+      write((prev) => prev.filter((o) => o.id !== id))
+      try {
+        window.localStorage.removeItem(savedKey(id))
+      } catch {
+        // storage disabled
+      }
+      setActiveId((cur) => {
+        if (cur !== id) return cur
+        writeJson(STORAGE_KEYS.activeProfile, '')
+        return ''
+      })
+    },
+    [write],
+  )
+  // A stored id whose profile was deleted (e.g. in another tab) falls back to the agency profile.
+  const active = profiles.find((p) => p.id === activeId)
+  return { profiles, active, select, saveProfile, deleteProfile }
 }

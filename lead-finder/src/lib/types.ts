@@ -2,8 +2,8 @@
 
 export type CategoryId =
   | 'any' | 'restaurants' | 'cafes' | 'salons' | 'barbers' | 'auto_repair' | 'dentists'
-  | 'fitness' | 'drywall' | 'trades' | 'cleaning' | 'party_rentals' | 'retail' | 'real_estate'
-  | 'law' | 'medical'
+  | 'fitness' | 'drywall' | 'general_contractors' | 'trades' | 'cleaning' | 'party_rentals' | 'retail'
+  | 'real_estate' | 'property_managers' | 'architects' | 'law' | 'medical'
 export type ServiceId =
   | 'website' | 'online_booking' | 'ai_chat' | 'mobile_redesign' | 'seo_basics' | 'review_collection'
 export type GapId =
@@ -61,6 +61,19 @@ export type ScoredLead = Lead & {
 }
 
 export type Sender = { name: string; business: string; email: string; phone: string; address: string; website: string }
+
+// A client profile finds customers for one of your clients and pitches on their behalf.
+// The agency profile (no ClientProfile) is the default: it finds businesses that need your services.
+export type ClientProfile = {
+  id: string
+  label: string // shown in the profile switcher, e.g. "Asher Construction"
+  offer: string // what the client does, e.g. "drywall, metal framing and acoustic ceilings"
+  sellingPoints: string // optional, true facts only, e.g. "Licensed and insured"
+  categories: CategoryId[] // the kinds of businesses that buy from the client
+  sender: Sender // who signs the client's pitches
+}
+// Sent with a pitch request when it is written for a client profile.
+export type Offer = { services: string; sellingPoints?: string }
 export type Pitch = {
   email: { subject: string; body: string }
   sms: string
@@ -93,5 +106,6 @@ export type PitchRequest = {
   gaps: GapId[]
   services: ServiceId[]
   sender: Sender
+  offer?: Offer
 }
 export type PitchResponse = Pitch

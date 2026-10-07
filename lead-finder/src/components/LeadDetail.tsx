@@ -3,7 +3,7 @@ import { PRICING } from '../data/pricing'
 import { googleMapsUrl } from '../lib/geo'
 import { formatRange, formatUsd } from '../lib/format'
 import { STATUS_LABELS } from '../lib/csv'
-import type { LeadStatus, Pitch, SavedLead, ScoredLead } from '../lib/types'
+import type { ClientProfile, LeadStatus, Pitch, SavedLead, ScoredLead } from '../lib/types'
 import PitchPanel from './PitchPanel'
 import ScoreBadge from './ScoreBadge'
 
@@ -13,6 +13,7 @@ type Props = {
   pitch: Pitch
   pitchLoading: boolean
   senderMissing: boolean
+  profile?: ClientProfile // set when pitching on a client's behalf
   onClose: () => void
   onToggleSave: () => void
   onStatus: (s: LeadStatus) => void
@@ -52,7 +53,7 @@ export default function LeadDetail(p: Props) {
       <div>
         <div className="flex items-start justify-between gap-2">
           <h2 className="text-lg font-bold leading-tight break-words">{lead.name}</h2>
-          <ScoreBadge score={lead.score} />
+          {!p.profile && <ScoreBadge score={lead.score} />}
         </div>
         <p className="mt-1 text-sm text-slate-500">{lead.category} · {lead.distanceKm.toFixed(1)} km away</p>
       </div>
@@ -79,45 +80,49 @@ export default function LeadDetail(p: Props) {
         </div>
       </section>
 
-      <section aria-label="Gaps">
-        <h3 className="mb-1 text-sm font-semibold">Gaps found</h3>
-        {lead.auditState === 'pending' && (
-          <p className="mb-1 flex items-center gap-1 text-sm text-slate-500"><Loader2 className="h-4 w-4 animate-spin" aria-hidden />Checking website…</p>
-        )}
-        {lead.gaps.length === 0 && lead.auditState !== 'pending' ? (
-          <p className="text-sm text-slate-500">No gaps found.</p>
-        ) : (
-          <ul className="space-y-1 text-sm">
-            {lead.gaps.map((g) => (
-              <li key={g.id} className="flex flex-wrap items-baseline gap-x-2">
-                <span className="font-medium">{g.label}</span>
-                {g.detail && <span className="text-xs text-slate-500">{g.detail}</span>}
-              </li>
-            ))}
-          </ul>
-        )}
-        {lead.audit?.note && lead.audit.status !== 'unreachable' && <p className="mt-1 text-xs text-slate-500">{lead.audit.note}</p>}
-        {lead.auditState === 'done' && lead.website && !lead.audit && <p className="mt-1 text-xs text-slate-500">Website not checked</p>}
-      </section>
+      {!p.profile && (
+        <>
+          <section aria-label="Gaps">
+            <h3 className="mb-1 text-sm font-semibold">Gaps found</h3>
+            {lead.auditState === 'pending' && (
+              <p className="mb-1 flex items-center gap-1 text-sm text-slate-500"><Loader2 className="h-4 w-4 animate-spin" aria-hidden />Checking website…</p>
+            )}
+            {lead.gaps.length === 0 && lead.auditState !== 'pending' ? (
+              <p className="text-sm text-slate-500">No gaps found.</p>
+            ) : (
+              <ul className="space-y-1 text-sm">
+                {lead.gaps.map((g) => (
+                  <li key={g.id} className="flex flex-wrap items-baseline gap-x-2">
+                    <span className="font-medium">{g.label}</span>
+                    {g.detail && <span className="text-xs text-slate-500">{g.detail}</span>}
+                  </li>
+                ))}
+              </ul>
+            )}
+            {lead.audit?.note && lead.audit.status !== 'unreachable' && <p className="mt-1 text-xs text-slate-500">{lead.audit.note}</p>}
+            {lead.auditState === 'done' && lead.website && !lead.audit && <p className="mt-1 text-xs text-slate-500">Website not checked</p>}
+          </section>
 
-      <section aria-label="Services">
-        <h3 className="mb-1 text-sm font-semibold">Recommended services</h3>
-        {lead.services.length === 0 ? (
-          <p className="text-sm text-slate-500">None.</p>
-        ) : (
-          <ul className="space-y-1 text-sm">
-            {lead.services.map((s) => (
-              <li key={s} className="flex justify-between gap-2">
-                <span>{PRICING[s].label}</span>
-                <span className="shrink-0 text-slate-500">{formatRange(PRICING[s])}</span>
-              </li>
-            ))}
-          </ul>
-        )}
-        <p className="mt-2 rounded-lg bg-indigo-50 px-3 py-2 text-sm font-semibold text-brand">
-          Est. deal value {formatUsd(lead.dealValue.min)}–{formatUsd(lead.dealValue.max)}
-        </p>
-      </section>
+          <section aria-label="Services">
+            <h3 className="mb-1 text-sm font-semibold">Recommended services</h3>
+            {lead.services.length === 0 ? (
+              <p className="text-sm text-slate-500">None.</p>
+            ) : (
+              <ul className="space-y-1 text-sm">
+                {lead.services.map((s) => (
+                  <li key={s} className="flex justify-between gap-2">
+                    <span>{PRICING[s].label}</span>
+                    <span className="shrink-0 text-slate-500">{formatRange(PRICING[s])}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <p className="mt-2 rounded-lg bg-indigo-50 px-3 py-2 text-sm font-semibold text-brand">
+              Est. deal value {formatUsd(lead.dealValue.min)}–{formatUsd(lead.dealValue.max)}
+            </p>
+          </section>
+        </>
+      )}
 
       <section aria-label="Tracking" className="space-y-2">
         <div className="flex flex-wrap items-end gap-3">
@@ -138,7 +143,7 @@ export default function LeadDetail(p: Props) {
         </label>
       </section>
 
-      <PitchPanel pitch={p.pitch} loading={p.pitchLoading} onRegenerate={p.onRegenerate} senderMissing={p.senderMissing} onOpenSettings={p.onOpenSettings} />
+      <PitchPanel pitch={p.pitch} loading={p.pitchLoading} onRegenerate={p.onRegenerate} senderMissing={p.senderMissing} onOpenSettings={p.onOpenSettings} from={p.profile?.label} />
     </div>
   )
 }

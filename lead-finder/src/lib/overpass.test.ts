@@ -85,6 +85,17 @@ describe('formatAddress / detectCategory', () => {
     expect(detectCategory({ craft: 'carpenter', name: 'Oak Cabinets' }).id).toBe('trades')
     expect(detectCategory({ shop: 'frame', name: 'Art & Framing' }).id).not.toBe('drywall')
   })
+  it("detects Asher's customer types, by tag or by name", () => {
+    expect(detectCategory({ office: 'construction_company' })).toEqual({ id: 'general_contractors', label: 'General contractor' })
+    expect(detectCategory({ craft: 'builder' }).id).toBe('general_contractors')
+    expect(detectCategory({ office: 'company', name: 'Peak Builders LLC' }).id).toBe('general_contractors')
+    expect(detectCategory({ office: 'construction_company', name: 'Rocky Mountain Drywall' }).id).toBe('drywall')
+    expect(detectCategory({ craft: 'electrician', name: 'Spark Construction Electric' }).id).toBe('trades')
+    expect(detectCategory({ office: 'property_management' }).id).toBe('property_managers')
+    expect(detectCategory({ office: 'company', name: 'Front Range Property Management' }).id).toBe('property_managers')
+    expect(detectCategory({ office: 'architect' })).toEqual({ id: 'architects', label: 'Architect' })
+    expect(detectCategory({ office: 'company', name: 'Studio Architects' }).id).toBe('architects')
+  })
   it('sends only the fast drywall tag selector to Overpass, never the name matches', () => {
     for (const cat of ['drywall', 'any'] as const) {
       const q = buildOverpassQuery(39.74, -104.99, 5, cat, 50)

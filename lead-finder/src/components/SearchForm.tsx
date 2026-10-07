@@ -1,15 +1,18 @@
 import { useState, type FormEvent } from 'react'
 import { Loader2, Search } from 'lucide-react'
 import { CATEGORIES } from '../data/categories'
-import type { CategoryId, SearchRequest } from '../lib/types'
+import type { CategoryId, ClientProfile, SearchRequest } from '../lib/types'
 
-type Props = { onSearch: (req: SearchRequest) => void; searching: boolean; demo: boolean }
+type Props = { onSearch: (req: SearchRequest) => void; searching: boolean; demo: boolean; profile?: ClientProfile }
 
 const field = 'w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-brand'
 
-export default function SearchForm({ onSearch, searching, demo }: Props) {
+export default function SearchForm({ onSearch, searching, demo, profile }: Props) {
   const [location, setLocation] = useState('')
-  const [category, setCategory] = useState<CategoryId>('any')
+  const [category, setCategory] = useState<CategoryId>(profile?.categories[0] ?? 'any')
+  // A client profile lists its customer types first.
+  const preferred = CATEGORIES.filter((c) => profile?.categories.includes(c.id))
+  const others = CATEGORIES.filter((c) => !profile?.categories.includes(c.id))
   const [radiusKm, setRadiusKm] = useState(5)
   const [limit, setLimit] = useState(60)
   const disabled = searching || demo
@@ -28,10 +31,21 @@ export default function SearchForm({ onSearch, searching, demo }: Props) {
           <span className="mb-1 block text-xs font-medium text-slate-600">Location</span>
           <input className={field} value={location} onChange={(e) => setLocation(e.target.value)} placeholder="City, ZIP code or address" maxLength={200} required />
         </label>
-        <label className="block lg:w-56">
+        <label className="block lg:w-64">
           <span className="mb-1 block text-xs font-medium text-slate-600">Category</span>
           <select className={field} value={category} onChange={(e) => setCategory(e.target.value as CategoryId)}>
-            {CATEGORIES.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
+            {preferred.length > 0 ? (
+              <>
+                <optgroup label={`${profile!.label}'s customers`}>
+                  {preferred.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
+                </optgroup>
+                <optgroup label="All categories">
+                  {others.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
+                </optgroup>
+              </>
+            ) : (
+              others.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)
+            )}
           </select>
         </label>
         <label className="block lg:w-44">

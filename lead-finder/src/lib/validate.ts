@@ -1,7 +1,7 @@
 import { PRICING } from '../data/pricing.js'
 import { getCategory } from '../data/categories.js'
 import { GAP_DEFS } from './gaps.js'
-import type { AuditRequest, GapId, PitchRequest, SearchRequest, Sender, ServiceId, CategoryId } from './types.js'
+import type { AuditRequest, GapId, Offer, PitchRequest, SearchRequest, Sender, ServiceId, CategoryId } from './types.js'
 
 export type Parsed<T> = { ok: true; value: T } | { ok: false; error: string }
 const fail = (error: string): { ok: false; error: string } => ({ ok: false, error })
@@ -63,6 +63,11 @@ export function parsePitchRequest(body: unknown): Parsed<PitchRequest> {
     name: reqStr(s.name), business: reqStr(s.business), email: reqStr(s.email),
     phone: reqStr(s.phone), address: reqStr(s.address), website: reqStr(s.website),
   }
+  let offer: Offer | undefined
+  if (isObj(body.offer)) {
+    const sellingPoints = optStr(body.offer.sellingPoints, 500)
+    offer = { services: optStr(body.offer.services, 300) ?? '', ...(sellingPoints ? { sellingPoints } : {}) }
+  }
   return {
     ok: true,
     value: {
@@ -75,6 +80,7 @@ export function parsePitchRequest(body: unknown): Parsed<PitchRequest> {
       gaps,
       services,
       sender,
+      ...(offer ? { offer } : {}),
     },
   }
 }

@@ -50,6 +50,17 @@ signed-out request is refused. It needs these environment variables:
 
 Re-run it after code changes to redeploy. Enter the access key in the app under "Your details".
 
+## Client profiles
+
+Lead Finder can also find customers for your clients. Pick a profile in **Finding leads for** at the top:
+
+- **My agency** (the default) finds businesses that are missing websites, booking and so on, and pitches your services.
+- **A client profile** (for example **Asher Construction**, which does drywall, metal framing and acoustic ceilings) searches the kinds of businesses that hire that client, such as general contractors and builders, property managers and architects. The pitch is an introduction written as the client. Website checks, scores and deal values are not used. Leads are ranked by how many ways there are to reach them (phone, email, website), then by distance.
+
+Each profile has its own signature details and its own saved leads. Press **Profile details** to change what the client does, their selling points, the customers to search for and who signs the pitches. Choose **+ New client profile…** in the switcher to add another client. Profiles are stored only in your browser, like your saved leads.
+
+Only put true facts in **Selling points**: they go into the pitches as written, and the AI is told not to invent anything beyond them.
+
 ## Environment variables
 
 | Name | What it does |
@@ -85,6 +96,8 @@ The three API endpoints are open to anyone who knows the URL: `/api/pitch` spend
 | Template emails, texts and call openers | `src/lib/pitch.ts` |
 | The AI prompt and model | `server/ai.ts` |
 | The demo dataset | `src/data/demo.ts` |
+| The client profiles that exist on first run | `src/data/profiles.ts` |
+| The client-profile pitch template | `buildClientPitch` in `src/lib/pitch.ts` |
 
 ## Outreach rules
 
