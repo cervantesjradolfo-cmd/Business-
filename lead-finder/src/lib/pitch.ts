@@ -1,7 +1,7 @@
 // Outreach templates. Edit the wording here (the AI version lives in server/ai.ts).
 import { PRICING } from '../data/pricing.js'
 import { GAP_DEFS } from './gaps.js'
-import type { Pitch, PitchRequest, Sender, ServiceId } from './types.js'
+import type { ClientProfile, Pitch, PitchRequest, ScoredLead, Sender, ServiceId } from './types.js'
 
 export const OPT_OUT_EMAIL = "If you'd rather not hear from me, just reply \"no thanks\" and I won't email again."
 export const OPT_OUT_SMS = 'Reply STOP to opt out.'
@@ -13,6 +13,28 @@ export function emailSignature(sender: Sender): string {
     .map((s) => s.trim())
     .filter(Boolean)
     .join('\n')
+}
+
+// The pitch request for a scored lead, written as the client when a profile is given.
+export function pitchRequestFor(l: ScoredLead, sender: Sender, profile?: ClientProfile): PitchRequest {
+  return {
+    lead: { name: l.name, category: l.category, city: l.city, website: l.website },
+    gaps: l.gaps.map((g) => g.id),
+    services: l.services,
+    sender,
+    ...(profile ? { offer: { services: profile.offer, sellingPoints: profile.sellingPoints } } : {}),
+    ...(l.project ? { project: { address: l.project.address, description: l.project.description, issued: l.project.issued } } : {}),
+  }
+}
+
+// What every pitch email ends with: signature, then the opt-out line.
+export function emailFooter(sender: Sender): string {
+  const withPlaceholders = {
+    ...sender,
+    name: sender.name.trim() || '[Your name]',
+    business: sender.business.trim() || '[Your business]',
+  }
+  return `\n\n${emailSignature(withPlaceholders)}\n\n${OPT_OUT_EMAIL}`
 }
 
 function joinList(items: string[]): string {

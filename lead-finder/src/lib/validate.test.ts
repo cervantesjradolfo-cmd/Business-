@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { cleanKeywords, parseAuditRequest, parsePitchRequest, parseProjectsRequest, parseSearchRequest } from './validate'
+import { cleanKeywords, isEmail, parseAuditRequest, parsePitchRequest, parseProjectsRequest, parseSearchRequest, parseSendRequest } from './validate'
 
 describe('parseSearchRequest', () => {
   it('applies defaults and trims', () => {
@@ -76,5 +76,55 @@ describe('parseProjectsRequest', () => {
   })
   it('accepts a comma-separated string', () => {
     expect(cleanKeywords('drywall, interior alteration ,  ')).toEqual(['DRYWALL', 'INTERIOR ALTERATION'])
+  })
+})
+
+describe('isEmail', () => {
+  it('accepts plain addresses and rejects odd ones', () => {
+    expect(isEmail(' info@acme.example.com ')).toBe(true)
+    expect(isEmail('a.b+c@acme.co')).toBe(true)
+    for (const bad of ['', 'no-at.com', 'a@b', 'a b@c.com', '<a@b.com>', 'a@b.com,c@d.com', 'a@b.com\nBcc: x@y.com', 'a@@b.com', `${'a'.repeat(250)}@b.com`]) {
+      expect(isEmail(bad)).toBe(false)
+    }
+  })
+})
+
+describe('parseSendRequest', () => {
+  const good = {
+    smtp: { host: 'smtp.gmail.com', port: 465, secure: true, user: 'me@gmail.com', pass: 'app-pass-1234' },
+    from: { name: 'Sam', address: 'Me@Gmail.com' },
+    to: 'owner@acme.example.com', subject: 'Hello', text: 'Body', suppressed: [' A@B.com ', 5, 'c@d.com'],
+  }
+  it('accepts a good request and normalises the suppression list', () => {
+    const r = parseSendRequest(good)
+    expect(r.ok && r.value).toMatchObject({ to: 'owner@acme.example.com', suppressed: ['a@b.com', 'c@d.com'], from: { address: 'Me@Gmail.com' } })
+  })
+  it('checks the port and secure combination', () => {
+    expect(parseSendRequest({ ...good, smtp: { ...good.smtp, port: 25 } }).ok).toBe(false)
+    expect(parseSendRequest({ ...good, smtp: { ...good.smtp, secure: false } })).toEqual({ ok: false, error: 'Port 465 uses SSL; 587 and 2525 use STARTTLS' })
+    expect(parseSendRequest({ ...good, smtp: { ...good.smtp, port: 587, secure: false } }).ok).toBe(true)
+    expect(parseSendRequest({ ...good, smtp: { ...good.smtp, port: 587, secure: true } }).ok).toBe(false)
+  })
+  it('rejects header injection, bad hosts, bad addresses and oversized input', () => {
+    expect(parseSendRequest({ ...good, subject: 'Hi\r\nBcc: x@y.com' }).ok).toBe(false)
+    expect(parseSendRequest({ ...good, from: { name: 'A\nB', address: 'a@b.com' } }).ok).toBe(false)
+    expect(parseSendRequest({ ...good, smtp: { ...good.smtp, host: 'a b.com' } }).ok).toBe(false)
+    expect(parseSendRequest({ ...good, to: 'nope' }).ok).toBe(false)
+    expect(parseSendRequest({ ...good, text: '' }).ok).toBe(false)
+    expect(parseSendRequest({ ...good, text: 'x'.repeat(20001) }).ok).toBe(false)
+    expect(parseSendRequest({ ...good, inReplyTo: 'no-brackets' }).ok).toBe(false)
+    expect(parseSendRequest({ ...good, suppressed: new Array(5001).fill('a@b.com') })).toEqual({ ok: false, error: 'Suppression list too long' })
+    expect(parseSendRequest(null).ok).toBe(false)
+  })
+  it('accepts a message id for replies', () => {
+    const r = parseSendRequest({ ...good, inReplyTo: '<abc@gmail.com>' })
+    expect(r.ok && r.value.inReplyTo).toBe('<abc@gmail.com>')
+  })
+  it('never puts submitted values in the error', () => {
+    const r = parseSendRequest({ ...good, smtp: { ...good.smtp, pass: '' }, to: 'secret-recipient' })
+    expect(r.ok).toBe(false)
+    expect(JSON.stringify(r)).not.toContain('secret')
+    const r2 = parseSendRequest({ ...good, smtp: { ...good.smtp, host: 'bad host!' } })
+    expect(JSON.stringify(r2)).not.toContain('bad host')
   })
 })

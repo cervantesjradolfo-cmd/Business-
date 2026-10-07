@@ -10,11 +10,21 @@ export const STORAGE_KEYS = {
   accessKey: 'leadfinder:accessKey',
   profiles: 'leadfinder:profiles',
   activeProfile: 'leadfinder:activeProfile',
+  outreach: 'leadfinder:outreach',
+  mailbox: 'leadfinder:mailbox',
 } as const
 
 // Each client profile keeps its own saved leads; the agency profile keeps the original key.
 export function savedKey(profileId?: string): string {
   return profileId ? `${STORAGE_KEYS.saved}:${profileId}` : STORAGE_KEYS.saved
+}
+
+// Outreach state and the mailbox are per profile too (same key scheme).
+export function outreachKey(profileId?: string): string {
+  return profileId ? `${STORAGE_KEYS.outreach}:${profileId}` : STORAGE_KEYS.outreach
+}
+export function mailboxKey(profileId?: string): string {
+  return profileId ? `${STORAGE_KEYS.mailbox}:${profileId}` : STORAGE_KEYS.mailbox
 }
 
 // Optional access key for deployments that set APP_ACCESS_KEY. Sent as the x-access-key header.
@@ -68,6 +78,7 @@ export function loadSaved(key: string = STORAGE_KEYS.saved): Record<string, Save
       status: STATUSES.includes(s.status as LeadStatus) ? (s.status as LeadStatus) : 'new',
       notes: typeof s.notes === 'string' ? s.notes : '',
       pitch: s.pitch,
+      ...(typeof s.outreachEmail === 'string' ? { outreachEmail: s.outreachEmail } : {}),
       savedAt: typeof s.savedAt === 'string' ? s.savedAt : now,
       updatedAt: typeof s.updatedAt === 'string' ? s.updatedAt : now,
     }
@@ -133,7 +144,13 @@ export function useSavedLeads(key: string = STORAGE_KEYS.saved) {
     [update],
   )
 
-  return { saved, save, remove, setStatus, setNotes, setPitch }
+  const setOutreachEmail = useCallback(
+    (id: string, email: string) =>
+      update((prev) => (prev[id] ? { ...prev, [id]: { ...prev[id], outreachEmail: email.trim(), updatedAt: new Date().toISOString() } } : prev)),
+    [update],
+  )
+
+  return { saved, save, remove, setStatus, setNotes, setPitch, setOutreachEmail }
 }
 
 export const EMPTY_SENDER: Sender = { name: '', business: '', email: '', phone: '', address: '', website: '' }
@@ -228,6 +245,8 @@ export function useProfiles() {
       write((prev) => prev.filter((o) => o.id !== id))
       try {
         window.localStorage.removeItem(savedKey(id))
+        window.localStorage.removeItem(outreachKey(id))
+        window.localStorage.removeItem(mailboxKey(id))
       } catch {
         // storage disabled
       }

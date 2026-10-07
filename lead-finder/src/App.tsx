@@ -6,10 +6,14 @@ import { ApiUnavailableError, auditLeads, fetchPitch, searchLeads, searchProject
 import { csvFilename, leadsToCsv } from './lib/csv'
 import { applyFilters, sortByContact, sortLeads } from './lib/filters'
 import { toLead } from './lib/format'
-import { buildTemplatePitch } from './lib/pitch'
+import { canEnroll, dueSteps, enroll, enrollmentLabel, outreachEmailFor, suppress, syncWithSaved } from './lib/outreach'
+import { mailboxKey, outreachKey, useMailbox, useOutreach } from './lib/outreachStore'
+import { buildTemplatePitch, pitchRequestFor } from './lib/pitch'
+import { useOutreachRunner } from './lib/useOutreachRunner'
+import { isEmail } from './lib/validate'
 import { scoreLead } from './lib/scoring'
 import { EMPTY_SENDER, savedKey, useProfiles, useSavedLeads, useSender } from './lib/storage'
-import type { AuditResult, ClientProfile, Filters as FiltersState, Lead, Pitch, PitchRequest, ProjectsRequest, ScoredLead, SearchRequest, Sender } from './lib/types'
+import type { AuditResult, ClientProfile, Filters as FiltersState, Lead, Pitch, ProjectsRequest, SavedLead, ScoredLead, SearchRequest, Sender } from './lib/types'
 import ApiNotice from './components/ApiNotice'
 import DemoBanner from './components/DemoBanner'
 import EmptyState from './components/EmptyState'
@@ -17,6 +21,7 @@ import Filters from './components/Filters'
 import Header, { NEW_PROFILE } from './components/Header'
 import LeadDetail from './components/LeadDetail'
 import LeadList from './components/LeadList'
+import OutreachTab from './components/OutreachTab'
 import ProgressBar from './components/ProgressBar'
 import SearchForm from './components/SearchForm'
 import SenderSettings, { type ProfileDraft } from './components/SenderSettings'
@@ -24,17 +29,6 @@ import SenderSettings, { type ProfileDraft } from './components/SenderSettings'
 type Phase = 'idle' | 'searching' | 'auditing' | 'done' | 'error' | 'unavailable'
 
 const BATCH = 8
-
-function pitchRequest(l: ScoredLead, sender: Sender, profile?: ClientProfile): PitchRequest {
-  return {
-    lead: { name: l.name, category: l.category, city: l.city, website: l.website },
-    gaps: l.gaps.map((g) => g.id),
-    services: l.services,
-    sender,
-    ...(profile ? { offer: { services: profile.offer, sellingPoints: profile.sellingPoints } } : {}),
-    ...(l.project ? { project: { address: l.project.address, description: l.project.description, issued: l.project.issued } } : {}),
-  }
-}
 
 // Owns the profiles. The workspace below is remounted per profile, so each profile starts with
 // a fresh search and reads its own saved leads.
@@ -100,20 +94,24 @@ function Workspace({ profile, sender, header, settingsOpen, onOpenSettings }: Wo
   const [notice, setNotice] = useState<string | undefined>()
   const [error, setError] = useState<string | undefined>()
   const [mode, setMode] = useState<'live' | 'demo'>('live')
-  const [tab, setTab] = useState<'results' | 'saved'>('results')
+  const [tab, setTab] = useState<'results' | 'saved' | 'outreach'>('results')
   const [filters, setFilters] = useState<FiltersState>({ minScore: 0, noWebsiteOnly: false, hasPhone: false, showChains: false })
   const [selectedId, setSelectedId] = useState<string | undefined>()
   const [pitches, setPitches] = useState<Record<string, Pitch>>({})
   const [pitchLoading, setPitchLoading] = useState(false)
 
-  const { saved, save, remove, setStatus, setNotes, setPitch } = useSavedLeads(savedKey(profile?.id))
+  const { saved, save, remove, setStatus, setNotes, setPitch, setOutreachEmail } = useSavedLeads(savedKey(profile?.id))
+  const outreachStoreKey = outreachKey(profile?.id)
+  const outreach = useOutreach(outreachStoreKey)
+  const [mailbox, setMailbox] = useMailbox(mailboxKey(profile?.id))
+  const [, setTick] = useState(0) // re-render every minute so due counts stay current
   const runRef = useRef<AbortController | null>(null)
   const requested = useRef<Set<string>>(new Set())
 
   // ---- lists ----
   const resultScored = useMemo(() => leads.map((l) => scoreLead(l, audits[l.id], pending.has(l.id))), [leads, audits, pending])
   const savedScored = useMemo(() => Object.values(saved).map((s) => scoreLead(s.lead, s.audit)), [saved])
-  const allScored = tab === 'results' ? resultScored : savedScored
+  const allScored = tab === 'results' ? resultScored : savedScored // the Outreach tab lists saved leads too
   // Chains are hidden by default in results; leads the user saved are always listed.
   // Client profiles don't use website gaps, so their leads are ranked by how easy they are to reach.
   const visible = useMemo(() => {
@@ -238,7 +236,7 @@ function Workspace({ profile, sender, header, settingsOpen, onOpenSettings }: Wo
     if (!selected || isDemoLead || selectedPending || !selectedKey) return
     if (requested.current.has(selectedKey) || saved[selectedKey]?.pitch || pitches[selectedKey]) return
     requested.current.add(selectedKey)
-    const req = pitchRequest(selected, sender, profile)
+    const req = pitchRequestFor(selected, sender, profile)
     fetchPitch(req)
       .then((p) => {
         setPitches((prev) => ({ ...prev, [selectedKey]: p }))
@@ -248,18 +246,40 @@ function Workspace({ profile, sender, header, settingsOpen, onOpenSettings }: Wo
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedKey, isDemoLead, selectedPending])
 
-  const currentPitch: Pitch | undefined = useMemo(() => {
-    if (!selected) return undefined
-    const stored = pitches[selected.id] ?? saved[selected.id]?.pitch
+  // The pitch the Pitch panel shows for a lead (also what outreach sends as step 1).
+  const pitchOf = useCallback((l: ScoredLead): Pitch => {
+    const stored = pitches[l.id] ?? saved[l.id]?.pitch
     // Template pitches are rebuilt from the current sender details; AI pitches are kept as written.
     if (stored && stored.source === 'ai') return stored
-    return buildTemplatePitch(pitchRequest(selected, sender, profile))
-  }, [selected, pitches, saved, sender, profile])
+    return buildTemplatePitch(pitchRequestFor(l, sender, profile))
+  }, [pitches, saved, sender, profile])
+  const currentPitch: Pitch | undefined = useMemo(() => (selected ? pitchOf(selected) : undefined), [selected, pitchOf])
+
+  // ---- outreach ----
+  const pitchForSaved = useCallback((s: SavedLead) => pitchOf(scoreLead(s.lead, s.audit)), [pitchOf])
+  const markContacted = useCallback((s: SavedLead) => {
+    if (s.status === 'new') setStatus(s.lead, s.audit, 'contacted')
+  }, [setStatus])
+  const runner = useOutreachRunner({
+    outreach, outreachKey: outreachStoreKey, saved, mailbox, sender, profile, pitchFor: pitchForSaved, markContacted,
+  })
+  useEffect(() => {
+    const id = setInterval(() => setTick((t) => t + 1), 60_000)
+    return () => clearInterval(id)
+  }, [])
+  const { update: updateOutreach } = outreach
+  const { campaign, suppressed } = outreach.state
+  // Stop sequences for leads that were removed, answered or unsubscribed, and finish ones past the end of the sequence.
+  useEffect(() => {
+    updateOutreach((s) => syncWithSaved(s, saved))
+  }, [saved, campaign, suppressed, updateOutreach])
+  const now = new Date()
+  const outreachDue = dueSteps(outreach.state, saved, now).length
 
   async function regenerate() {
     if (!selected) return
     const id = selected.id
-    const req = pitchRequest(selected, sender, profile)
+    const req = pitchRequestFor(selected, sender, profile)
     setPitchLoading(true)
     try {
       const p = selected.isDemo ? buildTemplatePitch(req) : await fetchPitch(req)
@@ -271,6 +291,24 @@ function Workspace({ profile, sender, header, settingsOpen, onOpenSettings }: Wo
       setPitchLoading(false)
     }
   }
+
+  // Props for the lead panel's Outreach section (saved leads only).
+  const sel = selected ? saved[selected.id] : undefined
+  const selEnrollment = sel ? outreach.state.enrollments[sel.lead.id] : undefined
+  const outreachProps = sel
+    ? {
+        outreach: {
+          email: outreachEmailFor(sel),
+          emailError: outreachEmailFor(sel) && !isEmail(outreachEmailFor(sel)) ? 'Enter a valid email address' : undefined,
+          enrollment: selEnrollment,
+          dueLabel: selEnrollment ? enrollmentLabel(selEnrollment, outreach.state.campaign) : undefined,
+          check: canEnroll(sel, outreach.state),
+        },
+        onOutreachEmail: (email: string) => setOutreachEmail(sel.lead.id, email),
+        onEnroll: () => outreach.update((s) => enroll(s, sel, new Date())),
+        onUnsubscribe: () => selEnrollment && outreach.update((s) => suppress(s, selEnrollment.email)),
+      }
+    : {}
 
   const searching = phase === 'searching' || phase === 'auditing'
   const senderMissing = !sender.name.trim() || !sender.business.trim()
@@ -300,9 +338,9 @@ function Workspace({ profile, sender, header, settingsOpen, onOpenSettings }: Wo
     <div className="flex min-h-screen flex-col">
       {mode === 'demo' && <DemoBanner onExit={exitDemo} />}
       <Header
-        tab={tab} onTab={(t) => { setTab(t); setSelectedId(undefined) }}
+        tab={tab} outreachDue={outreachDue} onTab={(t) => { setTab(t); setSelectedId(undefined) }}
         resultsCount={leads.length} savedCount={savedCount}
-        canExport={visible.length > 0} onExport={exportCsv} onSettings={onOpenSettings}
+        canExport={tab !== 'outreach' && visible.length > 0} onExport={exportCsv} onSettings={onOpenSettings}
         {...header}
       />
       <main className="mx-auto w-full max-w-7xl flex-1 space-y-3 px-4 py-4">
@@ -318,9 +356,18 @@ function Workspace({ profile, sender, header, settingsOpen, onOpenSettings }: Wo
           <p role="status" className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">{notice}</p>
         )}
 
-        {(allScored.length > 0 || tab === 'saved') && <Filters client={client} filters={filters} onChange={setFilters} shown={visible.length} total={allScored.length} chainCount={tab === 'results' ? chainCount : 0} />}
+        {tab === 'outreach' && (
+          <OutreachTab
+            state={outreach.state} update={outreach.update} saved={saved} mailbox={mailbox} onMailbox={setMailbox}
+            sender={sender} now={now} pitchFor={pitchForSaved} markContacted={markContacted}
+            status={runner.status} onRun={runner.runNow} onStop={runner.stop} onAuto={runner.setAuto} onTest={runner.sendTest}
+            onOpenLead={(id) => { setTab('saved'); setSelectedId(id) }} onOpenSettings={onOpenSettings}
+          />
+        )}
 
-        <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_420px]">
+        {tab !== 'outreach' && (allScored.length > 0 || tab === 'saved') && <Filters client={client} filters={filters} onChange={setFilters} shown={visible.length} total={allScored.length} chainCount={tab === 'results' ? chainCount : 0} />}
+
+        {tab !== 'outreach' && <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_420px]">
           <div className="min-w-0">
             {emptyView}
             {visible.length > 0 && <LeadList leads={visible} selectedId={selectedId} saved={saved} onSelect={setSelectedId} client={client} />}
@@ -346,12 +393,13 @@ function Workspace({ profile, sender, header, settingsOpen, onOpenSettings }: Wo
                 onNotes={(n) => setNotes(toLead(selected), selected.audit, n)}
                 onRegenerate={regenerate}
                 onOpenSettings={onOpenSettings}
+                {...outreachProps}
               />
             ) : (
               'Select a lead to see details'
             )}
           </aside>
-        </div>
+        </div>}
       </main>
       <footer className="border-t border-slate-200 bg-white py-3 text-center text-xs text-slate-500">
         <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer" className="hover:underline">Map data © OpenStreetMap contributors</a>

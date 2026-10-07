@@ -20,7 +20,7 @@ npm install
 npm run dev
 ```
 
-Open the address Vite prints. The API (`/api/search`, `/api/audit`, `/api/pitch`) runs inside the dev server, so nothing else is needed.
+Open the address Vite prints. The API (`/api/search`, `/api/audit`, `/api/pitch`, `/api/projects`, `/api/send`) runs inside the dev server, so nothing else is needed.
 
 Other commands: `npm run build`, `npm test`, `npm run lint`.
 
@@ -85,7 +85,7 @@ Only put true facts in **Selling points**: they go into the pitches as written, 
 
 ## Protect your deployment
 
-The three API endpoints are open to anyone who knows the URL: `/api/pitch` spends your Anthropic credit, `/api/audit` fetches websites from your server, and `/api/search` sends traffic to OpenStreetMap under your contact e-mail. Before you share a deployed URL, do at least one of these:
+The API endpoints are open to anyone who knows the URL: `/api/pitch` spends your Anthropic credit, `/api/audit` fetches websites from your server, `/api/search` sends traffic to OpenStreetMap under your contact e-mail, and `/api/send` sends mail through whatever mailbox the caller supplies (it cannot read your mailbox, but anyone can use your server to send mail from their own). Before you share a deployed URL, do at least one of these:
 
 - Set `APP_ACCESS_KEY` in Vercel (Settings, Environment Variables) and redeploy. Open the app, press **Your details**, and paste the same key into "Access key". The key is stored only in your browser. Without it the app shows "Access key required".
 - Turn on **Vercel Deployment Protection** (Settings, Deployment Protection, for example Vercel Authentication or Password Protection) so only people you allow can reach the site at all.
@@ -111,6 +111,46 @@ The three API endpoints are open to anyone who knows the URL: `/api/pitch` spend
 | The demo dataset | `src/data/demo.ts` |
 | The client profiles that exist on first run | `src/data/profiles.ts` |
 | The client-profile pitch template | `buildClientPitch` in `src/lib/pitch.ts` |
+| The default follow-up emails and mailbox presets | `src/lib/outreach.ts` |
+
+## Outreach (cold email)
+
+The **Outreach** tab sends your pitch emails and follow-ups from your own mailbox, and keeps track of who is due next. It works per profile, so each client keeps its own sequence, mailbox and list of unsubscribed addresses.
+
+### How it works
+
+1. Save a lead, open it, type an address under **Email for outreach** (OpenStreetMap leads with an email are prefilled) and press **Add to outreach**. Or use **Add all saved leads with an email** on the Outreach tab.
+2. The sequence is step 1 (the lead's pitch email from the Pitch panel, sent as written) and up to 2 follow-ups. Edit the follow-up wording and delays under **Sequence**. Follow-ups are sent as replies to the first email.
+3. **Due now** lists every email that is ready. **Send due emails** sends them one by one, waiting the number of seconds you set between emails and stopping at your daily limit. The rest stay due until tomorrow.
+4. **Auto-send while this tab is open** checks every minute and sends what is due. Nothing is sent while the app is closed.
+5. When a lead is sent to, its status becomes Contacted. Set it to Replied, Won or Lost, or press **Unsubscribed**, and its sequence stops for good.
+6. Without a mailbox the tab runs in manual mode: **Open in email app** opens your mail program with the email filled in, then press **Mark as sent**.
+
+If the app is closed while an email is being sent, that lead shows "Send result unknown, check your Sent folder". Press **Mark as sent** or **Retry**. It is never sent twice automatically.
+
+### Connect a mailbox
+
+Open the **Mailbox** section on the Outreach tab, pick a provider, enter your username and an app password, press **Save mailbox**, then **Send test email to myself**.
+
+- **Gmail / Google Workspace:** turn on 2-Step Verification, create an app password (Google Account, Security, App passwords), and use host `smtp.gmail.com`, port 465. Workspace admins may need to allow app passwords or SMTP access.
+- **Outlook / Microsoft 365:** host `smtp.office365.com`, port 587. SMTP AUTH must be enabled for the mailbox (an admin can do this), and you need an app password if you use multi-factor authentication.
+- **Zoho Mail:** host `smtp.zoho.com`, port 465.
+
+The SMTP password is kept only in this browser. It is sent to your own server with each email, used for that one send, and never stored or logged. The server refuses private and local addresses as mail servers.
+
+### Send safely
+
+- Start small, around 20 emails a day per mailbox, and raise it slowly over a few weeks. Keep the gap between emails at 45 seconds or more.
+- Use a separate domain and mailbox for cold email, so a spam complaint cannot hurt your main address.
+- Use your real name and address as the sender, and keep your postal address in the signature (the app adds your signature and an opt-out line to every email).
+- Honour opt-outs within 10 business days. Press **Unsubscribed** when someone asks, and the address is never emailed again from that profile.
+- Only email businesses, not private individuals.
+
+This is not legal advice.
+
+### Not built yet
+
+Sending while the app is closed (needs a database and Vercel Cron), reply detection through IMAP (for now, set the status to Replied yourself), open and click tracking, finding email addresses, and SMS.
 
 ## Outreach rules
 

@@ -100,6 +100,7 @@ export type SavedLead = {
   status: LeadStatus
   notes: string
   pitch?: Pitch
+  outreachEmail?: string // address to cold-email, overrides the lead's listed email
   savedAt: string
   updatedAt: string
 }
@@ -126,3 +127,57 @@ export type PitchRequest = {
 export type PitchResponse = Pitch
 export type ProjectsRequest = { location: string; radiusKm: number; keywords: string[]; days: number; limit: number }
 export type ProjectsResponse = { center: { lat: number; lon: number; displayName: string }; leads: Lead[]; notice?: string }
+
+// ---- Outreach (cold email) ----
+export type FollowUp = { delayDays: number; body: string } // delayDays 1..60, counted from the previous step's send time
+export type Campaign = { followUps: FollowUp[] } // 0..2 items; step 1 is always the lead's pitch email
+
+export type OutreachEntry = {
+  step: number // 0 = pitch email, 1..2 = follow-ups
+  sentAt: string // ISO
+  subject: string
+  via: 'smtp' | 'manual'
+  messageId?: string // from SMTP, used for In-Reply-To on follow-ups
+}
+export type StopReason = 'replied' | 'won' | 'lost' | 'removed' | 'unsubscribed'
+export type Enrollment = {
+  leadId: string
+  email: string // lower-cased, snapshot at enrollment
+  enrolledAt: string // ISO; step 0 is due at this time
+  nextStep: number // index of the next step to send
+  state: 'active' | 'finished' | 'stopped'
+  stopReason?: StopReason
+  subject?: string // step-0 subject as actually sent; follow-ups use "Re: " + this
+  history: OutreachEntry[]
+  pendingSend?: { step: number; startedAt: string } // set right before an SMTP call, cleared after
+  lastError?: string
+  lastErrorAt?: string // ISO
+}
+export type OutreachState = {
+  campaign: Campaign
+  enrollments: Record<string, Enrollment> // by leadId
+  suppressed: string[] // lower-cased addresses, unique
+  sentToday: { day: string; count: number } // day = local YYYY-MM-DD; SMTP sends only
+}
+export type Mailbox = {
+  host: string
+  port: 465 | 587 | 2525
+  secure: boolean
+  user: string
+  pass: string
+  fromName: string
+  fromAddress: string
+  gapSeconds: number // 20..300, default 45
+  dailyCap: number // 1..200, default 30
+}
+export type SendRequest = {
+  smtp: { host: string; port: number; secure: boolean; user: string; pass: string }
+  from: { name: string; address: string }
+  to: string
+  subject: string
+  text: string
+  inReplyTo?: string // "<...>" message id of step 0
+  suppressed: string[]
+}
+export type SendErrorCode = 'invalid' | 'suppressed' | 'host' | 'auth' | 'connection' | 'timeout' | 'rejected' | 'access' | 'unavailable'
+export type SendResult = { ok: true; messageId: string } | { ok: false; code: SendErrorCode; error: string }

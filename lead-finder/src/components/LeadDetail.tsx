@@ -3,7 +3,8 @@ import { PRICING } from '../data/pricing'
 import { googleMapsUrl, googleSearchUrl } from '../lib/geo'
 import { formatDate, formatMiles, formatRange, formatUsd } from '../lib/format'
 import { STATUS_LABELS } from '../lib/csv'
-import type { ClientProfile, LeadStatus, Pitch, SavedLead, ScoredLead } from '../lib/types'
+import type { ClientProfile, Enrollment, LeadStatus, Pitch, SavedLead, ScoredLead } from '../lib/types'
+import type { EnrollCheck } from '../lib/outreach'
 import PitchPanel from './PitchPanel'
 import ScoreBadge from './ScoreBadge'
 
@@ -20,6 +21,10 @@ type Props = {
   onNotes: (n: string) => void
   onRegenerate: () => void
   onOpenSettings: () => void
+  outreach?: { email: string; emailError?: string; enrollment?: Enrollment; dueLabel?: string; check: EnrollCheck }
+  onOutreachEmail?: (email: string) => void
+  onEnroll?: () => void
+  onUnsubscribe?: () => void
 }
 
 const NOT_LISTED = <span className="text-slate-400">Not listed</span>
@@ -171,6 +176,42 @@ export default function LeadDetail(p: Props) {
           <textarea value={p.saved?.notes ?? ''} onChange={(e) => p.onNotes(e.target.value)} rows={3} placeholder="Call log, next steps…" className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
         </label>
       </section>
+
+      {p.saved && p.outreach && (
+        <section aria-label="Outreach" className="space-y-2">
+          <h3 className="text-sm font-semibold">Outreach</h3>
+          <label className="block">
+            <span className="mb-1 block text-xs font-medium text-slate-600">Email for outreach</span>
+            <input
+              type="email" value={p.outreach.email} maxLength={254}
+              readOnly={p.outreach.enrollment?.state === 'active'}
+              onChange={(e) => p.onOutreachEmail?.(e.target.value)}
+              placeholder="name@company.com"
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-brand read-only:bg-slate-50 read-only:text-slate-500"
+            />
+          </label>
+          {p.outreach.enrollment?.state === 'active' && <p className="text-xs text-slate-500">Remove it from outreach to change the address</p>}
+          {p.outreach.emailError && <p role="alert" className="text-xs text-red-700">{p.outreach.emailError}</p>}
+          {p.outreach.enrollment ? (
+            <div className="flex flex-wrap items-center gap-3 text-sm">
+              <span className="font-medium">{p.outreach.dueLabel}</span>
+              {p.outreach.enrollment.state !== 'stopped' && (
+                <button type="button" onClick={p.onUnsubscribe} className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium hover:bg-slate-50">Unsubscribed</button>
+              )}
+            </div>
+          ) : (
+            <div>
+              <button
+                type="button" onClick={p.onEnroll} disabled={!p.outreach.check.ok}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-brand px-3 py-1.5 text-sm font-semibold text-white hover:bg-brand-dark disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Add to outreach
+              </button>
+              {!p.outreach.check.ok && <p className="mt-1 text-xs text-slate-500">{p.outreach.check.reason}</p>}
+            </div>
+          )}
+        </section>
+      )}
 
       <PitchPanel pitch={p.pitch} loading={p.pitchLoading} onRegenerate={p.onRegenerate} senderMissing={p.senderMissing} onOpenSettings={p.onOpenSettings} from={p.profile?.label} />
     </div>

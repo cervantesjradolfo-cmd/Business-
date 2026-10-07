@@ -1,8 +1,8 @@
-// Vite dev middleware: mounts api/search|audit|pitch|projects.ts so `npm run dev` needs no extra server.
+// Vite dev middleware: mounts api/search|audit|pitch|projects|send.ts so `npm run dev` needs no extra server.
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Plugin } from 'vite'
 
-const NAMES = new Set(['search', 'audit', 'pitch', 'projects'])
+const NAMES = new Set(['search', 'audit', 'pitch', 'projects', 'send'])
 const MAX_BODY = 1024 * 1024
 
 function sendJson(res: ServerResponse, status: number, data: unknown) {
