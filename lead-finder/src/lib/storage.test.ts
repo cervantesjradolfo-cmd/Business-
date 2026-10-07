@@ -18,7 +18,7 @@ describe('client profile storage', () => {
       { id: 'a', label: 'dupe' },
     ]))
     expect(loadProfiles()).toEqual([{
-      id: 'a', label: 'Client', offer: '', sellingPoints: '', categories: ['architects'],
+      id: 'a', label: 'Client', offer: '', sellingPoints: '', categories: ['architects'], projectKeywords: [],
       sender: { name: '', business: '', email: '', phone: '', address: '', website: '' },
     }])
     window.localStorage.setItem('leadfinder:profiles', '{not json')

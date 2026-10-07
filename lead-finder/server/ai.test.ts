@@ -28,6 +28,13 @@ describe('aiPitch', () => {
     expect(p).toMatchObject({ source: 'ai', email: { subject: 'Drywall crew' } })
     expect(p!.email.body).toContain('Asher Construction')
   })
+  it('passes a permit project to the AI', async () => {
+    const project = { address: '225 W Randolph St', issued: '2026-10-06', description: 'Interior alterations' }
+    await aiPitch({ ...base, offer: { services: 'drywall' }, project })
+    const args = create.mock.calls[0][0]
+    expect(args.system[0].text).toContain('public building permit')
+    expect(JSON.parse(args.messages[0].content).project).toEqual(project)
+  })
   it('keeps the agency prompt and gaps without an offer', async () => {
     await aiPitch(base)
     const args = create.mock.calls[0][0]

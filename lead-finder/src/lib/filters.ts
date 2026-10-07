@@ -4,10 +4,16 @@ import type { Filters, Lead, ScoredLead } from './types'
 export const contactCount = (l: Pick<Lead, 'phone' | 'email' | 'website'>): number =>
   [l.phone, l.email, l.website].filter((v) => !!v?.trim()).length
 
-// For client profiles: easiest to reach first, then nearest.
+// For client profiles: projects newest and biggest first, then businesses easiest to reach, then nearest.
 export function sortByContact(leads: ScoredLead[]): ScoredLead[] {
+  const issued = (l: ScoredLead) => l.project?.issued ?? ''
   return [...leads].sort(
-    (a, b) => contactCount(b) - contactCount(a) || a.distanceKm - b.distanceKm || a.name.localeCompare(b.name),
+    (a, b) =>
+      issued(b).localeCompare(issued(a)) ||
+      (b.project?.cost ?? 0) - (a.project?.cost ?? 0) ||
+      contactCount(b) - contactCount(a) ||
+      a.distanceKm - b.distanceKm ||
+      a.name.localeCompare(b.name),
   )
 }
 

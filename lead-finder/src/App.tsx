@@ -2,14 +2,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { SearchX, Target, Bookmark } from 'lucide-react'
 import clsx from 'clsx'
 import { DEMO_AUDITS, DEMO_LEADS } from './data/demo'
-import { ApiUnavailableError, auditLeads, fetchPitch, searchLeads } from './lib/api'
+import { ApiUnavailableError, auditLeads, fetchPitch, searchLeads, searchProjects } from './lib/api'
 import { csvFilename, leadsToCsv } from './lib/csv'
 import { applyFilters, sortByContact, sortLeads } from './lib/filters'
 import { toLead } from './lib/format'
 import { buildTemplatePitch } from './lib/pitch'
 import { scoreLead } from './lib/scoring'
 import { EMPTY_SENDER, savedKey, useProfiles, useSavedLeads, useSender } from './lib/storage'
-import type { AuditResult, ClientProfile, Filters as FiltersState, Lead, Pitch, PitchRequest, ScoredLead, SearchRequest, Sender } from './lib/types'
+import type { AuditResult, ClientProfile, Filters as FiltersState, Lead, Pitch, PitchRequest, ProjectsRequest, ScoredLead, SearchRequest, Sender } from './lib/types'
 import ApiNotice from './components/ApiNotice'
 import DemoBanner from './components/DemoBanner'
 import EmptyState from './components/EmptyState'
@@ -32,6 +32,7 @@ function pitchRequest(l: ScoredLead, sender: Sender, profile?: ClientProfile): P
     services: l.services,
     sender,
     ...(profile ? { offer: { services: profile.offer, sellingPoints: profile.sellingPoints } } : {}),
+    ...(l.project ? { project: { address: l.project.address, description: l.project.description, issued: l.project.issued } } : {}),
   }
 }
 
@@ -49,7 +50,7 @@ export default function App() {
   }
   function selectProfile(id: string) {
     if (id !== NEW_PROFILE) return select(id)
-    setDraft({ profile: { id: '', label: '', offer: '', sellingPoints: '', categories: [], sender: EMPTY_SENDER }, isNew: true })
+    setDraft({ profile: { id: '', label: '', offer: '', sellingPoints: '', categories: [], projectKeywords: [], sender: EMPTY_SENDER }, isNew: true })
     setSettingsOpen(true)
   }
 
@@ -125,7 +126,8 @@ function Workspace({ profile, sender, header, settingsOpen, onOpenSettings }: Wo
   const savedCount = Object.keys(saved).length
 
   // ---- search ----
-  const runSearch = useCallback(async (req: SearchRequest) => {
+  // Runs a business search or a project search; both return leads and an optional notice.
+  const runSearch = useCallback(async (load: (signal: AbortSignal) => Promise<{ leads: Lead[]; notice?: string }>) => {
     runRef.current?.abort()
     const ctrl = new AbortController()
     runRef.current = ctrl
@@ -139,12 +141,12 @@ function Workspace({ profile, sender, header, settingsOpen, onOpenSettings }: Wo
     setSelectedId(undefined)
     setProgress({ done: 0, total: 0 })
     try {
-      const res = await searchLeads(req, ctrl.signal)
+      const res = await load(ctrl.signal)
       if (!live()) return
       setLeads(res.leads)
       setNotice(res.notice)
       setTab('results')
-      // Client profiles don't pitch websites, so there is nothing to audit.
+      // Client profiles don't pitch websites, so there is nothing to audit (project leads have no website).
       const withSite = client ? [] : res.leads.filter((l) => l.website?.trim())
       setPending(new Set(withSite.map((l) => l.id)))
       setProgress({ done: 0, total: withSite.length })
@@ -281,7 +283,11 @@ function Workspace({ profile, sender, header, settingsOpen, onOpenSettings }: Wo
         : <EmptyState icon={<SearchX className="h-8 w-8" />} title="No saved leads match these filters" />
     } else if (phase === 'idle') {
       emptyView = profile
-        ? <EmptyState icon={<Target className="h-8 w-8" />} title={`Find customers for ${profile.label}`}>Search a town to list businesses that could hire {profile.label}, with a pitch written as {profile.label}.</EmptyState>
+        ? <EmptyState icon={<Target className="h-8 w-8" />} title={`Find customers for ${profile.label}`}>
+            {profile.projectKeywords.length > 0
+              ? `Search a town to list active jobs that need ${profile.label}'s kind of work, or businesses that could hire them. Each comes with a pitch written as ${profile.label}.`
+              : `Search a town to list businesses that could hire ${profile.label}, with a pitch written as ${profile.label}.`}
+          </EmptyState>
         : <EmptyState icon={<Target className="h-8 w-8" />} title="Search a town and category to find leads">Lead Finder lists local businesses and shows what they are missing online.</EmptyState>
     } else if (leads.length === 0) {
       emptyView = <EmptyState icon={<SearchX className="h-8 w-8" />} title="No businesses found">No businesses found. Try a bigger radius or 'Any business'.</EmptyState>
@@ -300,7 +306,11 @@ function Workspace({ profile, sender, header, settingsOpen, onOpenSettings }: Wo
         {...header}
       />
       <main className="mx-auto w-full max-w-7xl flex-1 space-y-3 px-4 py-4">
-        <SearchForm onSearch={runSearch} searching={searching} demo={mode === 'demo'} profile={profile} />
+        <SearchForm
+          onSearch={(req: SearchRequest) => runSearch((signal) => searchLeads(req, signal))}
+          onSearchProjects={(req: ProjectsRequest) => runSearch((signal) => searchProjects(req, signal))}
+          searching={searching} demo={mode === 'demo'} profile={profile}
+        />
         {searching && <ProgressBar phase={phase === 'searching' ? 'searching' : 'auditing'} done={progress.done} total={progress.total} />}
         {phase === 'unavailable' && <ApiNotice kind="unavailable" onDemo={enterDemo} />}
         {phase === 'error' && <ApiNotice kind="error" message={error} />}

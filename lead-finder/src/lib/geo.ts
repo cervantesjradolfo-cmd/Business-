@@ -14,6 +14,10 @@ export function googleMapsUrl(lead: Pick<Lead, 'name' | 'address' | 'lat' | 'lon
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`
 }
 
+export function googleSearchUrl(query: string): string {
+  return `https://www.google.com/search?q=${encodeURIComponent(query)}`
+}
+
 export function osmUrl(type: Lead['osmType'], id: number): string {
   return `https://www.openstreetmap.org/${type}/${id}`
 }

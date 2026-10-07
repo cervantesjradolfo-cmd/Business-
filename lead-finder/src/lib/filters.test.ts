@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { applyFilters, sortLeads } from './filters'
+import { applyFilters, sortByContact, sortLeads } from './filters'
 import { scoreLead } from './scoring'
 import type { Lead } from './types'
 
@@ -28,5 +28,15 @@ describe('sortLeads', () => {
     const l3 = mk('c', { distanceKm: 1 })
     const l4 = mk('d', { website: 'd.com' })
     expect(sortLeads([l4, l1, l2, l3]).map((l) => l.id)).toEqual(['c', 'a', 'b', 'd'])
+  })
+})
+
+describe('sortByContact with projects', () => {
+  const base = { osmType: 'node' as const, osmId: 0, osmUrl: '', category: 'General contractor', categoryId: 'general_contractors' as const, address: '', lat: 1, lon: 1, distanceKm: 1 }
+  const job = (id: string, issued: string, cost?: number) =>
+    scoreLead({ ...base, id, name: id, project: { permit: id, city: 'Chicago', issued, description: '', address: '', ...(cost ? { cost } : {}) } })
+  it('puts the newest permits first, then the biggest jobs', () => {
+    const sorted = sortByContact([job('old', '2026-09-01', 9e6), job('small', '2026-10-06', 1000), job('big', '2026-10-06', 5e6)])
+    expect(sorted.map((l) => l.id)).toEqual(['big', 'small', 'old'])
   })
 })

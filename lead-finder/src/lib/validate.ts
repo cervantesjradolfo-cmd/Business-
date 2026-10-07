@@ -1,7 +1,7 @@
 import { PRICING } from '../data/pricing.js'
 import { getCategory } from '../data/categories.js'
 import { GAP_DEFS } from './gaps.js'
-import type { AuditRequest, GapId, Offer, PitchRequest, SearchRequest, Sender, ServiceId, CategoryId } from './types.js'
+import type { AuditRequest, GapId, Offer, PitchRequest, ProjectsRequest, SearchRequest, Sender, ServiceId, CategoryId } from './types.js'
 
 export type Parsed<T> = { ok: true; value: T } | { ok: false; error: string }
 const fail = (error: string): { ok: false; error: string } => ({ ok: false, error })
@@ -25,6 +25,36 @@ export function parseSearchRequest(body: unknown): Parsed<SearchRequest> {
       location,
       category: category as CategoryId,
       radiusKm: clampNum(body.radiusKm, 1, 25, 5),
+      limit: Math.round(clampNum(body.limit, 1, 200, 60)),
+    },
+  }
+}
+
+// Permit keywords go into a SoQL query, so only plain words are allowed.
+export function cleanKeywords(v: unknown): string[] {
+  const list = Array.isArray(v) ? v : typeof v === 'string' ? v.split(',') : []
+  const out: string[] = []
+  for (const k of list) {
+    if (typeof k !== 'string') continue
+    const w = k.toUpperCase().replace(/[^A-Z0-9 /-]/g, ' ').replace(/\s+/g, ' ').trim()
+    if (w.length >= 3 && w.length <= 40 && !out.includes(w)) out.push(w)
+  }
+  return out.slice(0, 20)
+}
+
+export function parseProjectsRequest(body: unknown): Parsed<ProjectsRequest> {
+  if (!isObj(body)) return fail('Invalid request')
+  const location = typeof body.location === 'string' ? body.location.trim().slice(0, 200) : ''
+  if (!location) return fail('Enter a city, ZIP code or address')
+  const keywords = cleanKeywords(body.keywords)
+  if (keywords.length === 0) return fail('Add the kinds of work to look for in Profile details')
+  return {
+    ok: true,
+    value: {
+      location,
+      keywords,
+      radiusKm: clampNum(body.radiusKm, 1, 25, 5),
+      days: Math.round(clampNum(body.days, 7, 180, 60)),
       limit: Math.round(clampNum(body.limit, 1, 200, 60)),
     },
   }
@@ -63,6 +93,14 @@ export function parsePitchRequest(body: unknown): Parsed<PitchRequest> {
     name: reqStr(s.name), business: reqStr(s.business), email: reqStr(s.email),
     phone: reqStr(s.phone), address: reqStr(s.address), website: reqStr(s.website),
   }
+  let project: PitchRequest['project']
+  if (isObj(body.project)) {
+    project = {
+      address: optStr(body.project.address) ?? '',
+      description: optStr(body.project.description, 300) ?? '',
+      issued: optStr(body.project.issued, 10) ?? '',
+    }
+  }
   let offer: Offer | undefined
   if (isObj(body.offer)) {
     const sellingPoints = optStr(body.offer.sellingPoints, 500)
@@ -81,6 +119,7 @@ export function parsePitchRequest(body: unknown): Parsed<PitchRequest> {
       services,
       sender,
       ...(offer ? { offer } : {}),
+      ...(project ? { project } : {}),
     },
   }
 }

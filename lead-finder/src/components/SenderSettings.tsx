@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { X } from 'lucide-react'
 import { CATEGORIES } from '../data/categories'
 import { getAccessKey, newProfileId, setAccessKey } from '../lib/storage'
+import { cleanKeywords } from '../lib/validate'
 import type { CategoryId, ClientProfile, Sender } from '../lib/types'
 
 // A client profile being edited; isNew until it is saved for the first time.
@@ -32,6 +33,7 @@ const caption = 'mb-1 block text-xs font-medium text-slate-600'
 export default function SenderSettings({ sender, draft, takenIds = [], onSave, onDelete, onClose }: Props) {
   const [details, setDetails] = useState(sender)
   const [profile, setProfile] = useState(draft?.profile)
+  const [keywords, setKeywords] = useState(draft?.profile.projectKeywords.join(', ') ?? '')
   const [accessKey, setKey] = useState(getAccessKey)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [error, setError] = useState('')
@@ -54,7 +56,7 @@ export default function SenderSettings({ sender, draft, takenIds = [], onSave, o
       if (!label) return setError('Give the profile a name.')
       if (profile.categories.length === 0) return setError('Pick at least one kind of customer to search for.')
       const id = draft?.isNew ? newProfileId(label, takenIds) : profile.id
-      onSave(details, { ...profile, id, label, offer: profile.offer.trim(), sellingPoints: profile.sellingPoints.trim() })
+      onSave(details, { ...profile, id, label, offer: profile.offer.trim(), sellingPoints: profile.sellingPoints.trim(), projectKeywords: cleanKeywords(keywords) })
     } else {
       onSave(details)
     }
@@ -101,6 +103,11 @@ export default function SenderSettings({ sender, draft, takenIds = [], onSave, o
                   ))}
                 </div>
               </fieldset>
+              <label className="block">
+                <span className={caption}>Work to look for in building permits (comma-separated)</span>
+                <textarea value={keywords} maxLength={800} rows={3} onChange={(e) => setKeywords(e.target.value)} placeholder="e.g. drywall, framing, interior alteration, build-out" className={input} />
+                <span className="mt-1 block text-xs text-slate-500">Used by Active projects (Chicago permits). Leave empty to turn it off.</span>
+              </label>
               <h3 className="pt-1 text-sm font-semibold">Who signs the pitches</h3>
             </>
           )}

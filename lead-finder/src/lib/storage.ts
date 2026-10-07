@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { getCategory } from '../data/categories'
 import { DEFAULT_PROFILES } from '../data/profiles'
+import { cleanKeywords } from './validate'
 import type { AuditResult, CategoryId, ClientProfile, Lead, LeadStatus, Pitch, SavedLead, Sender } from './types'
 
 export const STORAGE_KEYS = {
@@ -185,6 +186,10 @@ export function loadProfiles(): ClientProfile[] {
       offer: str(p.offer),
       sellingPoints: str(p.sellingPoints),
       categories,
+      // Profiles saved before project search existed get the default keywords for their id, if any.
+      projectKeywords: Array.isArray(p.projectKeywords)
+        ? cleanKeywords(p.projectKeywords)
+        : (DEFAULT_PROFILES.find((d) => d.id === p.id)?.projectKeywords ?? []),
       sender: toSender(p.sender),
     })
   }

@@ -9,6 +9,11 @@ export const DEFAULT_PROFILES: ClientProfile[] = [
     offer: 'drywall, metal framing and acoustic ceilings',
     sellingPoints: '',
     categories: ['general_contractors', 'property_managers', 'architects'],
+    // Words looked for in Chicago building-permit descriptions (the Projects search).
+    projectKeywords: [
+      'DRYWALL', 'FRAMING', 'ACOUSTIC', 'CEILING', 'PARTITION', 'BUILD-OUT', 'BUILDOUT', 'BUILD OUT',
+      'INTERIOR ALTERATION', 'INTERIOR RENOVATION', 'GUT REHAB', 'NEW CONSTRUCTION',
+    ],
     sender: { name: '', business: 'Asher Construction', email: '', phone: '', address: '', website: '' },
   },
 ]

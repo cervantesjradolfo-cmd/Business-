@@ -19,6 +19,7 @@ Reply with JSON only: subject, emailBody, sms, phoneOpener.`
 const CLIENT_PROMPT = `You write short, honest cold outreach from a local business to another business that could hire it (for example a general contractor, property manager or architect).
 - Mention the recipient by name and the kind of business they are.
 - Say what the sender does, using the services given, and offer to bid on or help with upcoming projects.
+- If a project is given, it comes from a public building permit: mention its address and kind of work, and offer to bid that scope.
 - Use only the selling points given. Never invent licences, years in business, past clients, reviews, statistics or prices.
 - Email body: under 120 words, with a greeting, but no signature and no opt-out line (the code adds them).
 - SMS: under 250 characters, no opt-out text (the code adds it).
@@ -53,6 +54,7 @@ export async function aiPitch(req: PitchRequest): Promise<Pitch | null> {
     const userMessage = req.offer
       ? JSON.stringify({
           recipient: { business: req.lead.name, category: req.lead.category, city: req.lead.city, website: req.lead.website },
+          ...(req.project ? { project: req.project } : {}),
           sender: { name: req.sender.name, business: req.sender.business, services: req.offer.services, sellingPoints: req.offer.sellingPoints },
         })
       : JSON.stringify({

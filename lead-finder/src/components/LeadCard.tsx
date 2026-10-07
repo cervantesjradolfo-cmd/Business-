@@ -1,6 +1,6 @@
 import clsx from 'clsx'
 import { Loader2, MapPin } from 'lucide-react'
-import { formatRange } from '../lib/format'
+import { formatCost, formatDate, formatRange } from '../lib/format'
 import { STATUS_LABELS } from '../lib/csv'
 import type { LeadStatus, ScoredLead } from '../lib/types'
 import ScoreBadge from './ScoreBadge'
@@ -25,13 +25,22 @@ export default function LeadCard({ lead, selected, status, onSelect, client = fa
         <div className="min-w-0">
           <h3 className="truncate text-sm font-semibold text-slate-900">{lead.name}</h3>
           <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs text-slate-500">
-            <span>{lead.category}</span>
+            <span>{lead.project ? `${lead.category} · job at ${lead.project.address}` : lead.category}</span>
             <span className="inline-flex items-center gap-0.5"><MapPin className="h-3 w-3" aria-hidden />{lead.distanceKm.toFixed(1)} km</span>
           </p>
         </div>
         {!client && <ScoreBadge score={lead.score} />}
       </div>
-      {client ? (
+      {lead.project ? (
+        <>
+          <p className="mt-1.5 line-clamp-2 text-xs text-slate-700">{lead.project.description}</p>
+          <div className="mt-2 flex flex-wrap gap-1 text-xs">
+            <span className="rounded-md bg-slate-100 px-1.5 py-0.5 text-slate-700">Permit issued {formatDate(lead.project.issued)}</span>
+            {!!lead.project.cost && <span className="rounded-md bg-emerald-50 px-1.5 py-0.5 font-medium text-emerald-800">{formatCost(lead.project.cost)} job</span>}
+            {status && <span className="ml-auto rounded-full bg-indigo-50 px-2 py-0.5 font-medium text-brand">{STATUS_LABELS[status]}</span>}
+          </div>
+        </>
+      ) : client ? (
         <div className="mt-2 flex flex-wrap gap-1">
           {CONTACTS.filter(([k]) => lead[k]?.trim()).map(([k, label]) => (
             <span key={k} className="rounded-md bg-emerald-50 px-1.5 py-0.5 text-xs text-emerald-800">{label}</span>

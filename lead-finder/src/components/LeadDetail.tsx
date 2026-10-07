@@ -1,7 +1,7 @@
 import { ArrowLeft, Bookmark, BookmarkCheck, Clock, Globe, Loader2, Mail, MapPin, Phone } from 'lucide-react'
 import { PRICING } from '../data/pricing'
-import { googleMapsUrl } from '../lib/geo'
-import { formatRange, formatUsd } from '../lib/format'
+import { googleMapsUrl, googleSearchUrl } from '../lib/geo'
+import { formatDate, formatRange, formatUsd } from '../lib/format'
 import { STATUS_LABELS } from '../lib/csv'
 import type { ClientProfile, LeadStatus, Pitch, SavedLead, ScoredLead } from '../lib/types'
 import PitchPanel from './PitchPanel'
@@ -58,6 +58,22 @@ export default function LeadDetail(p: Props) {
         <p className="mt-1 text-sm text-slate-500">{lead.category} · {lead.distanceKm.toFixed(1)} km away</p>
       </div>
 
+      {lead.project && (
+        <section aria-label="Project" className="space-y-1.5 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm">
+          <h3 className="font-semibold">Project</h3>
+          <p><span className="text-slate-500">Job site: </span>{lead.project.address}, {lead.project.city}</p>
+          <p className="break-words">{lead.project.description}</p>
+          <p className="text-slate-600">
+            Permit {lead.project.permit} · issued {formatDate(lead.project.issued)}
+            {lead.project.cost ? ` · reported cost ${formatUsd(lead.project.cost)}` : ''}
+          </p>
+          {lead.project.architect && <p><span className="text-slate-500">Architect: </span>{lead.project.architect}</p>}
+          <p className="text-xs text-slate-500">
+            From the City of {lead.project.city}'s public building-permit data. The permit doesn't list the contractor's phone or email, so look them up before you reach out.
+          </p>
+        </section>
+      )}
+
       <section className="space-y-2" aria-label="Contact">
         <Row icon={<Phone className="h-4 w-4" />} label="Phone">
           {lead.phone ? <a className={link} href={`tel:${lead.phone.replace(/[^\d+]/g, '')}`}>{lead.phone}</a> : NOT_LISTED}
@@ -68,15 +84,28 @@ export default function LeadDetail(p: Props) {
         <Row icon={<Globe className="h-4 w-4" />} label="Website">
           {lead.website ? <a className={link} href={webHref(lead.website)} target="_blank" rel="noopener noreferrer">{lead.website}</a> : NOT_LISTED}
         </Row>
-        <Row icon={<MapPin className="h-4 w-4" />} label="Address">
-          {lead.address ? <span className="break-words">{lead.address}</span> : NOT_LISTED}
-        </Row>
-        <Row icon={<Clock className="h-4 w-4" />} label="Opening hours">
-          {lead.openingHours ? <span className="break-words">{lead.openingHours}</span> : NOT_LISTED}
-        </Row>
+        {!lead.project && (
+          <>
+            <Row icon={<MapPin className="h-4 w-4" />} label="Address">
+              {lead.address ? <span className="break-words">{lead.address}</span> : NOT_LISTED}
+            </Row>
+            <Row icon={<Clock className="h-4 w-4" />} label="Opening hours">
+              {lead.openingHours ? <span className="break-words">{lead.openingHours}</span> : NOT_LISTED}
+            </Row>
+          </>
+        )}
         <div className="flex flex-wrap gap-3 pt-1 text-sm">
-          <a className={link} href={googleMapsUrl(lead)} target="_blank" rel="noopener noreferrer">Google Maps</a>
-          <a className={link} href={lead.osmUrl} target="_blank" rel="noopener noreferrer">OpenStreetMap</a>
+          {lead.project ? (
+            <>
+              <a className={link} href={googleSearchUrl(`${lead.name} ${lead.project.city}`)} target="_blank" rel="noopener noreferrer">Look up {lead.name}</a>
+              <a className={link} href={googleMapsUrl({ ...lead, name: lead.project.address, address: lead.project.city })} target="_blank" rel="noopener noreferrer">Job site on Google Maps</a>
+            </>
+          ) : (
+            <>
+              <a className={link} href={googleMapsUrl(lead)} target="_blank" rel="noopener noreferrer">Google Maps</a>
+              <a className={link} href={lead.osmUrl} target="_blank" rel="noopener noreferrer">OpenStreetMap</a>
+            </>
+          )}
         </div>
       </section>
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { parseAuditRequest, parsePitchRequest, parseSearchRequest } from './validate'
+import { cleanKeywords, parseAuditRequest, parsePitchRequest, parseProjectsRequest, parseSearchRequest } from './validate'
 
 describe('parseSearchRequest', () => {
   it('applies defaults and trims', () => {
@@ -62,5 +62,19 @@ describe('parsePitchRequest offer', () => {
     expect(r.ok && r.value.offer).toEqual({ services: 'drywall' })
     const none = parsePitchRequest(base)
     expect(none.ok && 'offer' in none.value).toBe(false)
+  })
+})
+
+describe('parseProjectsRequest', () => {
+  it('cleans keywords so nothing but plain words reaches the query', () => {
+    const r = parseProjectsRequest({ location: ' Chicago ', keywords: ['drywall', "x' OR 1=1 --", 'build-out', 'Drywall', 'ab', '50%'], days: 999, radiusKm: 0, limit: 500 })
+    expect(r.ok && r.value).toEqual({ location: 'Chicago', keywords: ['DRYWALL', 'X OR 1 1 --', 'BUILD-OUT'], radiusKm: 1, days: 180, limit: 200 })
+  })
+  it('needs a location and at least one keyword', () => {
+    expect(parseProjectsRequest({ keywords: ['drywall'] }).ok).toBe(false)
+    expect(parseProjectsRequest({ location: 'Chicago', keywords: ["'", 'ab'] })).toEqual({ ok: false, error: 'Add the kinds of work to look for in Profile details' })
+  })
+  it('accepts a comma-separated string', () => {
+    expect(cleanKeywords('drywall, interior alteration ,  ')).toEqual(['DRYWALL', 'INTERIOR ALTERATION'])
   })
 })

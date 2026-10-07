@@ -1,6 +1,6 @@
 import { buildTemplatePitch } from './pitch'
 import { getAccessKey } from './storage'
-import type { AuditResult, Pitch, PitchRequest, SearchRequest, SearchResponse } from './types'
+import type { AuditResult, Pitch, PitchRequest, ProjectsRequest, ProjectsResponse, SearchRequest, SearchResponse } from './types'
 
 export class ApiUnavailableError extends Error {}
 
@@ -45,6 +45,10 @@ async function post<T>(path: string, body: unknown, signal?: AbortSignal): Promi
 
 export function searchLeads(req: SearchRequest, signal?: AbortSignal): Promise<SearchResponse> {
   return post<SearchResponse>('search', req, signal)
+}
+
+export function searchProjects(req: ProjectsRequest, signal?: AbortSignal): Promise<ProjectsResponse> {
+  return post<ProjectsResponse>('projects', req, signal)
 }
 
 export async function auditLeads(
