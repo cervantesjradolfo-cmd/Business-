@@ -34,8 +34,8 @@ describe('leadsToCsv', () => {
   it('leaves score, gaps and deal value out for a client profile', () => {
     const s = scoreLead({ ...lead, phone: '+1 555-0100' })
     const lines = leadsToCsv([s], { a: { lead, status: 'contacted', notes: 'call back', savedAt: '', updatedAt: '' } }, true).split('\r\n')
-    expect(lines[0]).toBe('\ufeff"Name","Category","Phone","Email","Website","Address","Opening hours","Distance km","Latitude","Longitude","OpenStreetMap","Project","Permit","Permit issued","Reported cost USD","Status","Notes"')
-    expect(lines[1]).toBe('"Foo","Cafe","+1 555-0100","","","1 St","","0.5","1","2","u","","","","","Contacted","call back"')
+    expect(lines[0]).toBe('\ufeff"Name","Category","Phone","Email","Website","Address","Opening hours","Distance mi","Latitude","Longitude","OpenStreetMap","Project","Permit","Permit issued","Reported cost USD","Status","Notes"')
+    expect(lines[1]).toBe('"Foo","Cafe","+1 555-0100","","","1 St","","0.31","1","2","u","","","","","Contacted","call back"')
     const job = scoreLead({ ...lead, project: { permit: 'B1', city: 'Chicago', issued: '2026-10-06', description: 'Interior alterations', address: '225 W Randolph St', cost: 44919084 } })
     expect(leadsToCsv([job], {}, true).split('\r\n')[1]).toContain('"Interior alterations","B1","2026-10-06","44919084","New"')
   })

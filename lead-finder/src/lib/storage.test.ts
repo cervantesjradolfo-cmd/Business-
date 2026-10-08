@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { DEFAULT_PROFILES } from '../data/profiles'
-import { loadProfiles, loadSaved, newProfileId, savedKey } from './storage'
+import { loadProfiles, loadSaved, mailboxKey, newProfileId, outreachKey, savedKey } from './storage'
 
 beforeEach(() => { window.localStorage.clear() })
 afterEach(() => { window.localStorage.clear() })
@@ -36,5 +36,21 @@ describe('client profile storage', () => {
     window.localStorage.setItem(savedKey('asher-construction'), JSON.stringify({ 'osm:node/1': { lead, status: 'won' } }))
     expect(loadSaved(savedKey('asher-construction'))['osm:node/1'].status).toBe('won')
     expect(loadSaved()).toEqual({})
+  })
+  it('keeps outreachEmail only when it is a string', () => {
+    const lead = { id: 'osm:node/1', name: 'Ridge' }
+    window.localStorage.setItem('leadfinder:saved', JSON.stringify({
+      a: { lead, outreachEmail: 'x@ridge.example.com' },
+      b: { lead: { ...lead, id: 'b' }, outreachEmail: 5 },
+    }))
+    const out = loadSaved()
+    expect(out.a.outreachEmail).toBe('x@ridge.example.com')
+    expect(out.b.outreachEmail).toBeUndefined()
+  })
+  it('keys outreach and mailbox per profile', () => {
+    expect(outreachKey()).toBe('leadfinder:outreach')
+    expect(outreachKey('asher')).toBe('leadfinder:outreach:asher')
+    expect(mailboxKey()).toBe('leadfinder:mailbox')
+    expect(mailboxKey('asher')).toBe('leadfinder:mailbox:asher')
   })
 })

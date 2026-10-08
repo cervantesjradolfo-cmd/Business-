@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react'
 import clsx from 'clsx'
 import { Loader2, Search } from 'lucide-react'
 import { CATEGORIES } from '../data/categories'
+import { KM_PER_MILE } from '../lib/format'
 import type { CategoryId, ClientProfile, ProjectsRequest, SearchRequest } from '../lib/types'
 
 type Props = {
@@ -26,7 +27,9 @@ export default function SearchForm({ onSearch, onSearchProjects, searching, demo
   // A client profile lists its customer types first.
   const preferred = CATEGORIES.filter((c) => profile?.categories.includes(c.id))
   const others = CATEGORIES.filter((c) => !profile?.categories.includes(c.id))
-  const [radiusKm, setRadiusKm] = useState(5)
+  // Shown in miles; the API takes km (15 mi is just under its 25 km cap).
+  const [radiusMi, setRadiusMi] = useState(3)
+  const radiusKm = Math.round(radiusMi * KM_PER_MILE * 100) / 100
   const [limit, setLimit] = useState(60)
   const disabled = searching || demo
 
@@ -87,8 +90,8 @@ export default function SearchForm({ onSearch, onSearchProjects, searching, demo
           </label>
         )}
         <label className="block lg:w-44">
-          <span className="mb-1 block text-xs font-medium text-slate-600">Radius: {radiusKm} km</span>
-          <input type="range" min={1} max={25} step={1} value={radiusKm} onChange={(e) => setRadiusKm(Number(e.target.value))} className="h-9 w-full accent-brand" />
+          <span className="mb-1 block text-xs font-medium text-slate-600">Radius: {radiusMi} mi</span>
+          <input type="range" min={1} max={15} step={1} value={radiusMi} onChange={(e) => setRadiusMi(Number(e.target.value))} className="h-9 w-full accent-brand" />
         </label>
         <label className="block lg:w-24">
           <span className="mb-1 block text-xs font-medium text-slate-600">Max results</span>

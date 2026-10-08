@@ -72,7 +72,10 @@ describe('first run and search flow', () => {
     expect(auditCalls.length).toBe(1)
     expect(auditCalls[0].body.leads).toEqual([{ id: GAMMA.id, website: GAMMA.website }])
     const searchBody = calls.find((c) => c.path.endsWith('/api/search'))!.body
-    expect(searchBody).toMatchObject({ location: 'Austin', category: 'any', radiusKm: 5, limit: 60 })
+    // The slider shows miles (3 mi default) and the API gets km.
+    expect(screen.getByText('Radius: 3 mi')).toBeTruthy()
+    expect(searchBody).toMatchObject({ location: 'Austin', category: 'any', radiusKm: 4.83, limit: 60 })
+    expect(screen.getAllByText('0.6 mi').length).toBeGreaterThan(0) // Alpha Cafe, 1 km away
     // Beta (score 80) before Alpha (74) before Gamma (0)
     const names = screen.getAllByRole('heading', { level: 3 }).map((h) => h.textContent)
     expect(names).toEqual(['Beta Bakery', 'Alpha Cafe', 'Gamma Grill'])

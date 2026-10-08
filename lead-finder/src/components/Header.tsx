@@ -6,10 +6,11 @@ import type { ClientProfile } from '../lib/types'
 export const NEW_PROFILE = '__new'
 
 type Props = {
-  tab: 'results' | 'saved'
-  onTab: (t: 'results' | 'saved') => void
+  tab: 'results' | 'saved' | 'outreach'
+  onTab: (t: 'results' | 'saved' | 'outreach') => void
   resultsCount: number
   savedCount: number
+  outreachDue: number
   canExport: boolean
   onExport: () => void
   onSettings: () => void
@@ -18,7 +19,7 @@ type Props = {
   onSelectProfile: (id: string) => void
 }
 
-export default function Header({ tab, onTab, resultsCount, savedCount, canExport, onExport, onSettings, profiles, activeId, onSelectProfile }: Props) {
+export default function Header({ tab, onTab, resultsCount, savedCount, outreachDue, canExport, onExport, onSettings, profiles, activeId, onSelectProfile }: Props) {
   const tabCls = (active: boolean) =>
     clsx(
       'rounded-lg px-3 py-1.5 text-sm font-medium',
@@ -45,6 +46,7 @@ export default function Header({ tab, onTab, resultsCount, savedCount, canExport
         <nav className="flex gap-1" aria-label="Lists">
           <button type="button" className={tabCls(tab === 'results')} aria-current={tab === 'results'} onClick={() => onTab('results')}>Results ({resultsCount})</button>
           <button type="button" className={tabCls(tab === 'saved')} aria-current={tab === 'saved'} onClick={() => onTab('saved')}>Saved ({savedCount})</button>
+          <button type="button" className={tabCls(tab === 'outreach')} aria-current={tab === 'outreach'} onClick={() => onTab('outreach')}>Outreach ({outreachDue})</button>
         </nav>
         <div className="ml-auto flex gap-2">
           <button type="button" onClick={onExport} disabled={!canExport} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50">

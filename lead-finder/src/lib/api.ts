@@ -1,6 +1,6 @@
 import { buildTemplatePitch } from './pitch'
 import { getAccessKey } from './storage'
-import type { AuditResult, Pitch, PitchRequest, ProjectsRequest, ProjectsResponse, SearchRequest, SearchResponse } from './types'
+import type { AuditResult, FollowUpRequest, FollowUpResponse, Pitch, PitchRequest, ProjectsRequest, ProjectsResponse, SearchRequest, SearchResponse, SendRequest, SendResult } from './types'
 
 export class ApiUnavailableError extends Error {}
 
@@ -71,4 +71,35 @@ export async function fetchPitch(req: PitchRequest, signal?: AbortSignal): Promi
     if (signal?.aborted) throw e
     return buildTemplatePitch(req)
   }
+}
+
+// AI-written follow-up body, or null when AI isn't set up on the server (or the call fails).
+export async function fetchFollowUp(req: FollowUpRequest, signal?: AbortSignal): Promise<string | null> {
+  try {
+    const data = await post<FollowUpResponse>('followup', req, signal)
+    return typeof data.body === 'string' && data.body.trim() ? data.body : null
+  } catch (e) {
+    if (signal?.aborted) throw e
+    return null
+  }
+}
+
+// Sends one email through the caller's own mailbox. Keeps the error `code`, so it doesn't use post().
+export async function sendEmail(req: SendRequest, signal?: AbortSignal): Promise<SendResult> {
+  const unavailable: SendResult = { ok: false, code: 'unavailable', error: 'Could not reach the server.' }
+  let res: Response
+  try {
+    res = await fetch(`${BASE}/api/send`, { method: 'POST', headers: accessHeaders(), body: JSON.stringify(req), signal })
+  } catch (e) {
+    if (signal?.aborted) throw e
+    return unavailable
+  }
+  if (res.status === 401) return { ok: false, code: 'access', error: 'Access key required. Add your access key under "Your details".' }
+  try {
+    const data = (await res.json()) as Partial<SendResult> | null
+    if (data && typeof data === 'object' && typeof data.ok === 'boolean') return data as SendResult
+  } catch {
+    // not JSON: no backend here
+  }
+  return unavailable
 }

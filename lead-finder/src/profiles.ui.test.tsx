@@ -155,7 +155,7 @@ describe('client profiles', () => {
 
     await screen.findByText('Redmond Construction Corp.')
     const body = calls.find((c) => c.path.endsWith('/api/projects'))!.body
-    expect(body).toMatchObject({ location: 'Chicago', days: 90, radiusKm: 5 })
+    expect(body).toMatchObject({ location: 'Chicago', days: 90, radiusKm: 4.83 })
     expect(body.keywords).toContain('DRYWALL')
     expect(calls.some((c) => c.path.endsWith('/api/search') || c.path.endsWith('/api/audit'))).toBe(false)
     expect(screen.getByText('$45M job')).toBeTruthy()

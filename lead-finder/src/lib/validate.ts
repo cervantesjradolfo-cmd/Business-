@@ -1,7 +1,7 @@
 import { PRICING } from '../data/pricing.js'
 import { getCategory } from '../data/categories.js'
 import { GAP_DEFS } from './gaps.js'
-import type { AuditRequest, GapId, Offer, PitchRequest, ProjectsRequest, SearchRequest, Sender, ServiceId, CategoryId } from './types.js'
+import type { AuditRequest, FollowUpRequest, GapId, Offer, PitchRequest, ProjectsRequest, SearchRequest, SendRequest, Sender, ServiceId, CategoryId } from './types.js'
 
 export type Parsed<T> = { ok: true; value: T } | { ok: false; error: string }
 const fail = (error: string): { ok: false; error: string } => ({ ok: false, error })
@@ -120,6 +120,88 @@ export function parsePitchRequest(body: unknown): Parsed<PitchRequest> {
       sender,
       ...(offer ? { offer } : {}),
       ...(project ? { project } : {}),
+    },
+  }
+}
+
+const EMAIL_RE = /^[^\s@<>()",;:\\[\]]+@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$/
+
+export function isEmail(s: string): boolean {
+  if (typeof s !== 'string') return false
+  const t = s.trim()
+  return t.length <= 254 && !/[\r\n]/.test(t) && EMAIL_RE.test(t)
+}
+
+const HOST_RE = /^[A-Za-z0-9.:_-]+$/
+const hasNewline = (s: string) => /[\r\n]/.test(s)
+
+// Error strings never contain submitted values (the request carries an SMTP password).
+export function parseSendRequest(body: unknown): Parsed<SendRequest> {
+  if (!isObj(body) || !isObj(body.smtp) || !isObj(body.from)) return fail('Invalid request')
+  const { smtp, from } = body
+  const host = typeof smtp.host === 'string' ? smtp.host.trim() : ''
+  if (host.length < 1 || host.length > 253 || !HOST_RE.test(host.replace(/^\[|\]$/g, ''))) return fail('Enter a valid mail server host')
+  const port = smtp.port
+  if (port !== 465 && port !== 587 && port !== 2525) return fail('Port must be 465, 587 or 2525')
+  if (typeof smtp.secure !== 'boolean' || smtp.secure !== (port === 465)) return fail('Port 465 uses SSL; 587 and 2525 use STARTTLS')
+  const user = typeof smtp.user === 'string' ? smtp.user : ''
+  if (user.length < 1 || user.length > 254) return fail('Enter the mailbox username')
+  const pass = typeof smtp.pass === 'string' ? smtp.pass : ''
+  if (pass.length < 1 || pass.length > 200) return fail('Enter the mailbox app password')
+  const fromAddress = typeof from.address === 'string' ? from.address.trim() : ''
+  if (!isEmail(fromAddress)) return fail('Enter a valid from address')
+  const fromName = typeof from.name === 'string' ? from.name.trim() : ''
+  if (fromName.length > 100 || hasNewline(fromName)) return fail('From name is invalid')
+  const to = typeof body.to === 'string' ? body.to.trim() : ''
+  if (!isEmail(to)) return fail('Enter a valid recipient address')
+  const subject = typeof body.subject === 'string' ? body.subject.trim() : ''
+  if (subject.length < 1 || subject.length > 200 || hasNewline(subject)) return fail('Subject must be 1 to 200 characters on one line')
+  const text = typeof body.text === 'string' ? body.text : ''
+  if (text.trim().length < 1 || text.length > 20000) return fail('Message must be 1 to 20000 characters')
+  let inReplyTo: string | undefined
+  if (body.inReplyTo !== undefined && body.inReplyTo !== null && body.inReplyTo !== '') {
+    if (typeof body.inReplyTo !== 'string' || !/^<[^<>\s]{1,250}>$/.test(body.inReplyTo)) return fail('Invalid reply reference')
+    inReplyTo = body.inReplyTo
+  }
+  const rawSup = Array.isArray(body.suppressed) ? body.suppressed : []
+  if (rawSup.length > 5000) return fail('Suppression list too long')
+  const suppressed = rawSup.filter((v): v is string => typeof v === 'string').map((v) => v.trim().toLowerCase())
+  return {
+    ok: true,
+    value: {
+      smtp: { host, port, secure: smtp.secure, user, pass },
+      from: { name: fromName, address: fromAddress },
+      to,
+      subject,
+      text,
+      ...(inReplyTo ? { inReplyTo } : {}),
+      suppressed,
+    },
+  }
+}
+
+export function parseFollowUpRequest(body: unknown): Parsed<FollowUpRequest> {
+  if (!isObj(body) || !isObj(body.lead)) return fail('Invalid request')
+  const name = optStr(body.lead.name)
+  if (!name) return fail('Business name is required')
+  const step = body.step === 1 || body.step === 2 ? body.step : 0
+  if (!step) return fail('Invalid follow-up step')
+  const previousBody = typeof body.previousBody === 'string' ? body.previousBody.trim().slice(0, 5000) : ''
+  if (!previousBody) return fail('The earlier email is required')
+  const s = isObj(body.sender) ? body.sender : {}
+  const offer = isObj(body.offer) ? body.offer : undefined
+  const project = isObj(body.project) ? body.project : undefined
+  const points = offer ? optStr(offer.sellingPoints, 500) : undefined
+  return {
+    ok: true,
+    value: {
+      lead: { name, category: optStr(body.lead.category) ?? 'business', city: optStr(body.lead.city) },
+      sender: { name: reqStr(s.name), business: reqStr(s.business) },
+      step,
+      previousSubject: optStr(body.previousSubject, 300) ?? '',
+      previousBody,
+      ...(offer ? { offer: { services: optStr(offer.services, 300) ?? '', ...(points ? { sellingPoints: points } : {}) } } : {}),
+      ...(project ? { project: { address: optStr(project.address) ?? '', description: optStr(project.description, 300) ?? '', issued: optStr(project.issued, 10) ?? '' } } : {}),
     },
   }
 }
