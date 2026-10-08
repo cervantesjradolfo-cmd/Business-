@@ -22,7 +22,7 @@ import Header, { NEW_PROFILE } from './components/Header'
 import LeadDetail from './components/LeadDetail'
 import LeadList from './components/LeadList'
 import OutreachTab from './components/OutreachTab'
-import ProgressBar from './components/ProgressBar'
+import ProgressBar, { type PlaceProgress } from './components/ProgressBar'
 import SearchForm from './components/SearchForm'
 import SenderSettings, { type ProfileDraft } from './components/SenderSettings'
 
@@ -97,6 +97,7 @@ function Workspace({ profile, sender, header, settingsOpen, onOpenSettings }: Wo
   const [tab, setTab] = useState<'results' | 'saved' | 'outreach'>('results')
   const [filters, setFilters] = useState<FiltersState>({ minScore: 0, noWebsiteOnly: false, hasPhone: false, showChains: false })
   const [selectedId, setSelectedId] = useState<string | undefined>()
+  const [placeProgress, setPlaceProgress] = useState<PlaceProgress | undefined>()
   const [pitches, setPitches] = useState<Record<string, Pitch>>({})
   const [pitchLoading, setPitchLoading] = useState(false)
 
@@ -124,12 +125,11 @@ function Workspace({ profile, sender, header, settingsOpen, onOpenSettings }: Wo
   const savedCount = Object.keys(saved).length
 
   // ---- search ----
-  // Runs a business search or a project search; both return leads and an optional notice.
-  const runSearch = useCallback(async (load: (signal: AbortSignal) => Promise<{ leads: Lead[]; notice?: string }>) => {
+  // Starts a new run: cancels the previous one and clears the results.
+  const startRun = useCallback(() => {
     runRef.current?.abort()
     const ctrl = new AbortController()
     runRef.current = ctrl
-    const live = () => runRef.current === ctrl && !ctrl.signal.aborted
     setPhase('searching')
     setError(undefined)
     setNotice(undefined)
@@ -138,45 +138,95 @@ function Workspace({ profile, sender, header, settingsOpen, onOpenSettings }: Wo
     setPending(new Set())
     setSelectedId(undefined)
     setProgress({ done: 0, total: 0 })
+    setPlaceProgress(undefined)
+    setTab('results')
+    return { ctrl, live: () => runRef.current === ctrl && !ctrl.signal.aborted }
+  }, [])
+
+  // Checks the websites of new leads in batches. Returns false if the run was stopped meanwhile.
+  const auditNew = useCallback(async (found: Lead[], signal: AbortSignal, live: () => boolean): Promise<boolean> => {
+    // Client profiles don't pitch websites, so there is nothing to audit (project leads have no website).
+    const withSite = client ? [] : found.filter((l) => l.website?.trim())
+    setPending(new Set(withSite.map((l) => l.id)))
+    setProgress({ done: 0, total: withSite.length })
+    if (withSite.length === 0) return true
+    setPhase('auditing')
+    let done = 0
+    for (let i = 0; i < withSite.length; i += BATCH) {
+      const batch = withSite.slice(i, i + BATCH)
+      const results = await auditLeads(batch.map((l) => ({ id: l.id, website: l.website! })), signal)
+      if (!live()) return false
+      setAudits((prev) => ({ ...prev, ...Object.fromEntries(results.map((r) => [r.id, r])) }))
+      setPending((prev) => {
+        const next = new Set(prev)
+        for (const l of batch) next.delete(l.id)
+        return next
+      })
+      done += batch.length
+      setProgress({ done, total: withSite.length })
+    }
+    return true
+  }, [client])
+
+  const failRun = useCallback((e: unknown) => {
+    if (e instanceof ApiUnavailableError) setPhase('unavailable')
+    else {
+      setError(e instanceof Error ? e.message : 'Something went wrong')
+      setPhase('error')
+    }
+  }, [])
+
+  // Runs a business search or a project search; both return leads and an optional notice.
+  const runSearch = useCallback(async (load: (signal: AbortSignal) => Promise<{ leads: Lead[]; notice?: string }>) => {
+    const { ctrl, live } = startRun()
     try {
       const res = await load(ctrl.signal)
       if (!live()) return
       setLeads(res.leads)
       setNotice(res.notice)
-      setTab('results')
-      // Client profiles don't pitch websites, so there is nothing to audit (project leads have no website).
-      const withSite = client ? [] : res.leads.filter((l) => l.website?.trim())
-      setPending(new Set(withSite.map((l) => l.id)))
-      setProgress({ done: 0, total: withSite.length })
-      if (withSite.length === 0) {
-        setPhase('done')
-        return
-      }
-      setPhase('auditing')
-      let done = 0
-      for (let i = 0; i < withSite.length; i += BATCH) {
-        const batch = withSite.slice(i, i + BATCH)
-        const results = await auditLeads(batch.map((l) => ({ id: l.id, website: l.website! })), ctrl.signal)
-        if (!live()) return
-        setAudits((prev) => ({ ...prev, ...Object.fromEntries(results.map((r) => [r.id, r])) }))
-        setPending((prev) => {
-          const next = new Set(prev)
-          for (const l of batch) next.delete(l.id)
-          return next
-        })
-        done += batch.length
-        setProgress({ done, total: withSite.length })
-      }
-      if (live()) setPhase('done')
+      if (await auditNew(res.leads, ctrl.signal, live)) setPhase('done')
     } catch (e) {
-      if (!live()) return
-      if (e instanceof ApiUnavailableError) setPhase('unavailable')
-      else {
-        setError(e instanceof Error ? e.message : 'Something went wrong')
-        setPhase('error')
-      }
+      if (live()) failRun(e)
     }
-  }, [client])
+  }, [startRun, auditNew, failRun])
+
+  // "Many places": one business search per place, results added to one list as each place finishes.
+  // A place that fails is skipped and named at the end; a missing access key or no API stops the run.
+  const runPlaces = useCallback(async (places: string[], base: Omit<SearchRequest, 'location'>) => {
+    const { ctrl, live } = startRun()
+    const seen = new Set<string>()
+    const failed: string[] = []
+    for (let i = 0; i < places.length; i++) {
+      setPlaceProgress({ place: places[i], index: i + 1, total: places.length })
+      setPhase('searching')
+      let found: Lead[]
+      try {
+        found = (await searchLeads({ ...base, location: places[i] }, ctrl.signal)).leads
+      } catch (e) {
+        if (!live()) return
+        if (e instanceof ApiUnavailableError || (e instanceof Error && e.message.startsWith('Access key required'))) return failRun(e)
+        failed.push(places[i])
+        continue
+      }
+      if (!live()) return
+      const fresh = found.filter((l) => !seen.has(l.id))
+      for (const l of fresh) seen.add(l.id)
+      setLeads((prev) => [...prev, ...fresh])
+      if (!(await auditNew(fresh, ctrl.signal, live))) return
+    }
+    setPlaceProgress(undefined)
+    if (failed.length) setNotice(`Searched ${places.length - failed.length} of ${places.length} places. Couldn't search: ${failed.join('; ')}.`)
+    setPhase('done')
+  }, [startRun, auditNew, failRun])
+
+  // Stops a run but keeps what was found; leads not checked yet show "Website not checked".
+  function stopRun() {
+    runRef.current?.abort()
+    runRef.current = null
+    setPending(new Set())
+    setPlaceProgress(undefined)
+    setPhase('done')
+  }
 
   function enterDemo() {
     runRef.current?.abort()
@@ -347,9 +397,10 @@ function Workspace({ profile, sender, header, settingsOpen, onOpenSettings }: Wo
         <SearchForm
           onSearch={(req: SearchRequest) => runSearch((signal) => searchLeads(req, signal))}
           onSearchProjects={(req: ProjectsRequest) => runSearch((signal) => searchProjects(req, signal))}
+          onSearchPlaces={runPlaces}
           searching={searching} demo={mode === 'demo'} profile={profile}
         />
-        {searching && <ProgressBar phase={phase === 'searching' ? 'searching' : 'auditing'} done={progress.done} total={progress.total} />}
+        {searching && <ProgressBar phase={phase === 'searching' ? 'searching' : 'auditing'} done={progress.done} total={progress.total} place={placeProgress} onStop={placeProgress ? stopRun : undefined} />}
         {phase === 'unavailable' && <ApiNotice kind="unavailable" onDemo={enterDemo} />}
         {phase === 'error' && <ApiNotice kind="error" message={error} />}
         {notice && tab === 'results' && (
