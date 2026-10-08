@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
   DEFAULT_CAMPAIGN, buildStepEmail, canEnroll, dueAt, dueSteps, enroll, enrollAll, followUpSubject, loadMailbox, loadOutreach,
   localDay, mailboxReady, mailtoHref, outreachEmailFor, recordError, recordSent, renderTemplate, senderReady, sentTodayCount,
-  setPending, suppress, syncWithSaved, unenroll, unknownVariables,
+  setDraft, setPending, stripFooter, suppress, syncWithSaved, unenroll, unknownVariables, DRAFT_BODY_MAX,
 } from './outreach'
 import { emailFooter, OPT_OUT_EMAIL } from './pitch'
 import type { Enrollment, OutreachState, Pitch, SavedLead, Sender } from './types'
@@ -182,7 +182,8 @@ describe('buildStepEmail', () => {
   const base = (e: Enrollment, p = pitch()) => buildStepEmail({ enrollment: e, saved: a, pitch: p, campaign: DEFAULT_CAMPAIGN, sender: SENDER })
   const first = enroll(empty(), a, T0).enrollments.a
   it('sends the pitch as written when it ends with the current footer', () => {
-    expect(base(first)).toEqual({ ok: true, subject: 'Quick idea', body: `Hi there${emailFooter(SENDER)}` })
+    expect(base(first)).toEqual({ ok: true, subject: 'Quick idea', body: `Hi there${emailFooter(SENDER)}`, source: 'ai' })
+    expect(base(first, { ...pitch(), source: 'template' })).toMatchObject({ ok: true, source: 'template' })
     expect(emailFooter(SENDER).endsWith(OPT_OUT_EMAIL)).toBe(true)
   })
   it('blocks a pitch written before the details changed or while details are missing', () => {
@@ -243,5 +244,50 @@ describe('loading', () => {
     expect(loadMailbox('m')).toMatchObject({ host: 'smtp.x.com', port: 465, secure: true, user: '', pass: 'p', gapSeconds: 20, dailyCap: 200 })
     window.localStorage.setItem('m', JSON.stringify({ port: 587, secure: true }))
     expect(loadMailbox('m')).toMatchObject({ port: 587, secure: false })
+  })
+})
+
+describe('drafts (AI or edited wording per step)', () => {
+  const a = lead('a', { city: 'Austin' })
+  const build = (e: Enrollment, p = pitch()) => buildStepEmail({ enrollment: e, saved: a, pitch: p, campaign: DEFAULT_CAMPAIGN, sender: SENDER })
+  const enrolled = () => enroll(empty(), a, T0)
+
+  it('uses a step-1 draft with a fresh footer, even when the old pitch is stale', () => {
+    const s = setDraft(enrolled(), 'a', 0, { subject: 'New idea', body: 'Hi Acme,\n\nShort note.', source: 'edited' })
+    const stale = pitch('Hi\n\n[Your name]\n\nbye')
+    expect(build(s.enrollments.a, stale)).toEqual({ ok: true, subject: 'New idea', body: `Hi Acme,\n\nShort note.${emailFooter(SENDER)}`, source: 'edited' })
+    const noSubject = setDraft(enrolled(), 'a', 0, { body: 'Body', source: 'ai' })
+    expect(build(noSubject.enrollments.a)).toMatchObject({ subject: 'Quick idea', source: 'ai' })
+  })
+  it('uses a follow-up draft as a reply to the step-1 subject, keeping In-Reply-To', () => {
+    let s = recordSent(enrolled(), 'a', { step: 0, sentAt: T0.toISOString(), subject: 'Sent subject', via: 'smtp', messageId: '<m1@x>' }, T0)
+    s = setDraft(s, 'a', 1, { subject: 'ignored', body: 'Just checking in.', source: 'ai' })
+    expect(build(s.enrollments.a)).toEqual({
+      ok: true, subject: 'Re: Sent subject', body: `Just checking in.${emailFooter(SENDER)}`, source: 'ai', inReplyTo: '<m1@x>',
+    })
+    expect(s.enrollments.a.drafts?.[1]).not.toHaveProperty('subject')
+  })
+  it('keeps subjects to one line, caps the body, and removes a draft', () => {
+    const s = setDraft(enrolled(), 'a', 0, { subject: 'Hi\r\nBcc: x@evil.example', body: 'x'.repeat(DRAFT_BODY_MAX + 50), source: 'edited' })
+    expect(s.enrollments.a.drafts?.[0]).toEqual({ subject: 'Hi Bcc: x@evil.example', body: 'x'.repeat(DRAFT_BODY_MAX), source: 'edited' })
+    const cleared = setDraft(s, 'a', 0, undefined)
+    expect(cleared.enrollments.a).not.toHaveProperty('drafts')
+    expect(build(cleared.enrollments.a)).toMatchObject({ source: 'ai', subject: 'Quick idea' })
+    expect(setDraft(s, 'nobody', 0, undefined)).toBe(s)
+  })
+  it('strips only an exact footer', () => {
+    expect(stripFooter(`Hello${emailFooter(SENDER)}`, SENDER)).toBe('Hello')
+    expect(stripFooter('Hello\n\nbye', SENDER)).toBe('Hello\n\nbye')
+  })
+  it('loads drafts defensively', () => {
+    const key = 'leadfinder:outreach:test-drafts'
+    const e = setDraft(enrolled(), 'a', 0, { subject: 'S', body: 'B', source: 'ai' }).enrollments.a
+    window.localStorage.setItem(key, JSON.stringify({
+      enrollments: { a: { ...e, drafts: { 0: { subject: 'S\nX', body: 'B', source: 'weird' }, 1: { body: 7 }, 9: { body: 'far' }, x: { body: 'nan' } } } },
+    }))
+    expect(loadOutreach(key).enrollments.a.drafts).toEqual({ 0: { subject: 'S X', body: 'B', source: 'edited' } })
+    window.localStorage.setItem(key, JSON.stringify({ enrollments: { a: { ...e, drafts: 'nope' } } }))
+    expect(loadOutreach(key).enrollments.a).not.toHaveProperty('drafts')
+    window.localStorage.removeItem(key)
   })
 })

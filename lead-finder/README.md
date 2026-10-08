@@ -126,6 +126,15 @@ The **Outreach** tab sends your pitch emails and follow-ups from your own mailbo
 5. When a lead is sent to, its status becomes Contacted. Set it to Replied, Won or Lost, or press **Unsubscribed**, and its sequence stops for good.
 6. Without a mailbox the tab runs in manual mode: **Open in email app** opens your mail program with the email filled in, then press **Mark as sent**.
 
+### Preview, AI and edits
+
+Every queued email has a **Preview** link (on its Due now row, or under In outreach before it is due) that shows the exact subject and text that will be sent, signature and opt-out line included, with a label: Template, Written by AI or Edited.
+
+- **Write with AI** rewrites that one email. Step 1 uses the same AI as the Pitch panel; a follow-up is written fresh, as a short reply to the first email (`POST /api/followup`). It needs `ANTHROPIC_API_KEY`; without it the app says so and keeps the current wording.
+- **Edit** changes the subject (step 1 only) and the message. Your signature, postal address and opt-out line are always added back, so they can't be removed by accident.
+- **Undo changes** goes back to the pitch or the Sequence template.
+- **Send due emails**, auto-send and **Open in email app** all send exactly what the preview shows. While an email is being sent, its wording is locked.
+
 If the app is closed while an email is being sent, that lead shows "Send result unknown, check your Sent folder". Press **Mark as sent** or **Retry**. It is never sent twice automatically.
 
 ### Connect a mailbox

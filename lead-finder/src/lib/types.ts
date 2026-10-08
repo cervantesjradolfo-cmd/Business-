@@ -152,7 +152,25 @@ export type Enrollment = {
   pendingSend?: { step: number; startedAt: string } // set right before an SMTP call, cleared after
   lastError?: string
   lastErrorAt?: string // ISO
+  drafts?: Partial<Record<number, Draft>> // by step: replaces the pitch / follow-up template for that step
 }
+// A step's wording written by AI or edited by hand. The body never includes the signature or
+// opt-out line; those are added fresh when the email is built.
+export type Draft = {
+  subject?: string // step 0 only; follow-ups always reply to the step-0 subject
+  body: string
+  source: 'ai' | 'edited'
+}
+export type FollowUpRequest = {
+  lead: Pick<Lead, 'name' | 'category' | 'city'>
+  sender: Pick<Sender, 'name' | 'business'>
+  step: number // 1 or 2
+  previousSubject: string
+  previousBody: string // the step-1 email as sent or queued, without the footer
+  offer?: Offer
+  project?: Pick<Project, 'address' | 'description' | 'issued'>
+}
+export type FollowUpResponse = { body: string | null } // null = AI not available; use the template
 export type OutreachState = {
   campaign: Campaign
   enrollments: Record<string, Enrollment> // by leadId

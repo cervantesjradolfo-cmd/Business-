@@ -1,7 +1,7 @@
 import { PRICING } from '../data/pricing.js'
 import { getCategory } from '../data/categories.js'
 import { GAP_DEFS } from './gaps.js'
-import type { AuditRequest, GapId, Offer, PitchRequest, ProjectsRequest, SearchRequest, SendRequest, Sender, ServiceId, CategoryId } from './types.js'
+import type { AuditRequest, FollowUpRequest, GapId, Offer, PitchRequest, ProjectsRequest, SearchRequest, SendRequest, Sender, ServiceId, CategoryId } from './types.js'
 
 export type Parsed<T> = { ok: true; value: T } | { ok: false; error: string }
 const fail = (error: string): { ok: false; error: string } => ({ ok: false, error })
@@ -176,6 +176,32 @@ export function parseSendRequest(body: unknown): Parsed<SendRequest> {
       text,
       ...(inReplyTo ? { inReplyTo } : {}),
       suppressed,
+    },
+  }
+}
+
+export function parseFollowUpRequest(body: unknown): Parsed<FollowUpRequest> {
+  if (!isObj(body) || !isObj(body.lead)) return fail('Invalid request')
+  const name = optStr(body.lead.name)
+  if (!name) return fail('Business name is required')
+  const step = body.step === 1 || body.step === 2 ? body.step : 0
+  if (!step) return fail('Invalid follow-up step')
+  const previousBody = typeof body.previousBody === 'string' ? body.previousBody.trim().slice(0, 5000) : ''
+  if (!previousBody) return fail('The earlier email is required')
+  const s = isObj(body.sender) ? body.sender : {}
+  const offer = isObj(body.offer) ? body.offer : undefined
+  const project = isObj(body.project) ? body.project : undefined
+  const points = offer ? optStr(offer.sellingPoints, 500) : undefined
+  return {
+    ok: true,
+    value: {
+      lead: { name, category: optStr(body.lead.category) ?? 'business', city: optStr(body.lead.city) },
+      sender: { name: reqStr(s.name), business: reqStr(s.business) },
+      step,
+      previousSubject: optStr(body.previousSubject, 300) ?? '',
+      previousBody,
+      ...(offer ? { offer: { services: optStr(offer.services, 300) ?? '', ...(points ? { sellingPoints: points } : {}) } } : {}),
+      ...(project ? { project: { address: optStr(project.address) ?? '', description: optStr(project.description, 300) ?? '', issued: optStr(project.issued, 10) ?? '' } } : {}),
     },
   }
 }

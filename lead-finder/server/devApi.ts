@@ -2,7 +2,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Plugin } from 'vite'
 
-const NAMES = new Set(['search', 'audit', 'pitch', 'projects', 'send'])
+const NAMES = new Set(['search', 'audit', 'pitch', 'projects', 'send', 'followup'])
 const MAX_BODY = 1024 * 1024
 
 function sendJson(res: ServerResponse, status: number, data: unknown) {

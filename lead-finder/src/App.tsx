@@ -359,7 +359,7 @@ function Workspace({ profile, sender, header, settingsOpen, onOpenSettings }: Wo
         {tab === 'outreach' && (
           <OutreachTab
             state={outreach.state} update={outreach.update} saved={saved} mailbox={mailbox} onMailbox={setMailbox}
-            sender={sender} now={now} pitchFor={pitchForSaved} markContacted={markContacted}
+            sender={sender} profile={profile} now={now} pitchFor={pitchForSaved} markContacted={markContacted}
             status={runner.status} onRun={runner.runNow} onStop={runner.stop} onAuto={runner.setAuto} onTest={runner.sendTest}
             onOpenLead={(id) => { setTab('saved'); setSelectedId(id) }} onOpenSettings={onOpenSettings}
           />

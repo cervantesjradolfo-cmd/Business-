@@ -1,6 +1,6 @@
 import { buildTemplatePitch } from './pitch'
 import { getAccessKey } from './storage'
-import type { AuditResult, Pitch, PitchRequest, ProjectsRequest, ProjectsResponse, SearchRequest, SearchResponse, SendRequest, SendResult } from './types'
+import type { AuditResult, FollowUpRequest, FollowUpResponse, Pitch, PitchRequest, ProjectsRequest, ProjectsResponse, SearchRequest, SearchResponse, SendRequest, SendResult } from './types'
 
 export class ApiUnavailableError extends Error {}
 
@@ -70,6 +70,17 @@ export async function fetchPitch(req: PitchRequest, signal?: AbortSignal): Promi
   } catch (e) {
     if (signal?.aborted) throw e
     return buildTemplatePitch(req)
+  }
+}
+
+// AI-written follow-up body, or null when AI isn't set up on the server (or the call fails).
+export async function fetchFollowUp(req: FollowUpRequest, signal?: AbortSignal): Promise<string | null> {
+  try {
+    const data = await post<FollowUpResponse>('followup', req, signal)
+    return typeof data.body === 'string' && data.body.trim() ? data.body : null
+  } catch (e) {
+    if (signal?.aborted) throw e
+    return null
   }
 }
 

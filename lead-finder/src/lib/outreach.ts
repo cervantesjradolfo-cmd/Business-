@@ -5,7 +5,7 @@ import { emailFooter } from './pitch'
 import { readJson } from './storage'
 import { isEmail } from './validate'
 import type {
-  Campaign, Enrollment, Mailbox, OutreachEntry, OutreachState, Pitch, SavedLead, Sender, StopReason,
+  Campaign, Draft, Enrollment, Mailbox, OutreachEntry, OutreachState, Pitch, SavedLead, Sender, StopReason,
 } from './types'
 
 export const OUTREACH_VARIABLES = ['business', 'sender_name', 'sender_business', 'city'] as const
@@ -70,33 +70,77 @@ export function mailboxReady(m: Mailbox): boolean {
 
 // ---- step emails ----
 
+export type StepSource = 'template' | 'ai' | 'edited'
+export type BuiltEmail =
+  | { ok: true; subject: string; body: string; inReplyTo?: string; source: StepSource }
+  | { ok: false; error: string }
+
+// The pitch body without its signature and opt-out line (what a step-0 draft starts from).
+export function stripFooter(body: string, sender: Sender): string {
+  const footer = emailFooter(sender)
+  return (body.endsWith(footer) ? body.slice(0, -footer.length) : body).trimEnd()
+}
+
 export function buildStepEmail(a: {
   enrollment: Enrollment; saved: SavedLead; pitch: Pitch; campaign: Campaign; sender: Sender
-}): { ok: true; subject: string; body: string; inReplyTo?: string } | { ok: false; error: string } {
+}): BuiltEmail {
   const { enrollment, saved, pitch, campaign, sender } = a
   if (!senderReady(sender)) return { ok: false, error: 'Add the name, business and postal address under Your/Profile details first.' }
   const footer = emailFooter(sender)
+  const draft = enrollment.drafts?.[enrollment.nextStep]
   if (enrollment.nextStep === 0) {
+    if (draft) return { ok: true, subject: draft.subject?.trim() || pitch.email.subject, body: draft.body.trim() + footer, source: draft.source }
     if (!pitch.email.body.endsWith(footer)) {
       return { ok: false, error: "This pitch was written before your details changed. Press Regenerate in the lead's Pitch panel." }
     }
-    return { ok: true, subject: pitch.email.subject, body: pitch.email.body }
+    return { ok: true, subject: pitch.email.subject, body: pitch.email.body, source: pitch.source === 'ai' ? 'ai' : 'template' }
   }
   const followUp = campaign.followUps[enrollment.nextStep - 1]
   if (!followUp) return { ok: false, error: 'That follow-up is no longer in the sequence.' }
+  const inReplyTo0 = enrollment.history.find((h) => h.step === 0)?.messageId
+  if (draft) {
+    return {
+      ok: true,
+      subject: followUpSubject(enrollment.subject ?? pitch.email.subject),
+      body: draft.body.trim() + footer,
+      source: draft.source,
+      ...(inReplyTo0 ? { inReplyTo: inReplyTo0 } : {}),
+    }
+  }
   const vars: Vars = {
     business: saved.lead.name,
     sender_name: sender.name.trim(),
     sender_business: sender.business.trim(),
     city: saved.lead.city ?? saved.lead.project?.city ?? 'your area',
   }
-  const inReplyTo = enrollment.history.find((h) => h.step === 0)?.messageId
   return {
     ok: true,
     subject: followUpSubject(enrollment.subject ?? pitch.email.subject),
     body: renderTemplate(followUp.body.trim(), vars) + footer,
-    ...(inReplyTo ? { inReplyTo } : {}),
+    source: 'template',
+    ...(inReplyTo0 ? { inReplyTo: inReplyTo0 } : {}),
   }
+}
+
+export const DRAFT_SUBJECT_MAX = 200
+export const DRAFT_BODY_MAX = 5000
+
+// Saves (or with undefined, removes) the wording for one step of a lead's sequence.
+export function setDraft(state: OutreachState, leadId: string, step: number, draft: Draft | undefined): OutreachState {
+  const e = state.enrollments[leadId]
+  if (!e) return state
+  const drafts = { ...e.drafts }
+  if (draft) {
+    drafts[step] = {
+      body: draft.body.slice(0, DRAFT_BODY_MAX),
+      source: draft.source,
+      // Subjects are single-line: a line break would be header injection.
+      ...(step === 0 && draft.subject?.trim() ? { subject: draft.subject.replace(/[\r\n]+/g, ' ').trim().slice(0, DRAFT_SUBJECT_MAX) } : {}),
+    }
+  } else delete drafts[step]
+  const updated: Enrollment = { ...e, drafts }
+  if (Object.keys(drafts).length === 0) delete updated.drafts
+  return { ...state, enrollments: { ...state.enrollments, [leadId]: updated } }
 }
 
 // ---- enrollment ----
@@ -302,11 +346,27 @@ function loadEntry(raw: unknown): OutreachEntry | null {
   }
 }
 
+function loadDrafts(raw: unknown): Enrollment['drafts'] | undefined {
+  if (!isObj(raw)) return undefined
+  const out: NonNullable<Enrollment['drafts']> = {}
+  for (const [k, v] of Object.entries(raw)) {
+    const step = Number(k)
+    if (!Number.isInteger(step) || step < 0 || step > MAX_FOLLOW_UPS || !isObj(v) || typeof v.body !== 'string') continue
+    out[step] = {
+      body: v.body.slice(0, DRAFT_BODY_MAX),
+      source: v.source === 'ai' ? 'ai' : 'edited',
+      ...(step === 0 && typeof v.subject === 'string' && v.subject.trim() ? { subject: v.subject.replace(/[\r\n]+/g, ' ').trim().slice(0, DRAFT_SUBJECT_MAX) } : {}),
+    }
+  }
+  return Object.keys(out).length ? out : undefined
+}
+
 function loadEnrollment(raw: unknown): Enrollment | null {
   if (!isObj(raw) || typeof raw.leadId !== 'string' || !raw.leadId || typeof raw.email !== 'string') return null
   const history = (Array.isArray(raw.history) ? raw.history : []).map(loadEntry).filter((h): h is OutreachEntry => !!h)
   const state = raw.state === 'finished' || raw.state === 'stopped' ? raw.state : 'active'
   const pending = isObj(raw.pendingSend) && typeof raw.pendingSend.step === 'number' ? raw.pendingSend : undefined
+  const drafts = loadDrafts(raw.drafts)
   return {
     leadId: raw.leadId,
     email: raw.email.trim().toLowerCase(),
@@ -319,6 +379,7 @@ function loadEnrollment(raw: unknown): Enrollment | null {
     ...(pending ? { pendingSend: { step: pending.step as number, startedAt: isoOrEmpty(pending.startedAt) || new Date().toISOString() } } : {}),
     ...(typeof raw.lastError === 'string' ? { lastError: raw.lastError } : {}),
     ...(isoOrEmpty(raw.lastErrorAt) ? { lastErrorAt: raw.lastErrorAt as string } : {}),
+    ...(drafts ? { drafts } : {}),
   }
 }
 

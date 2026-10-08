@@ -2,10 +2,12 @@ import { useEffect, useState } from 'react'
 import { AlertTriangle } from 'lucide-react'
 import {
   buildStepEmail, canEnroll, dueAt, dueSteps, enrollAll, enrollmentLabel, formatDue, mailboxReady, mailtoHref, recordSent,
-  senderReady, sentTodayCount, setPending, suppress, unenroll, unknownVariables, OUTREACH_VARIABLES,
+  senderReady, sentTodayCount, setDraft, setPending, suppress, unenroll, unknownVariables, OUTREACH_VARIABLES,
 } from '../lib/outreach'
+import { aiDraftFor } from '../lib/outreachAi'
 import type { RunStatus } from '../lib/useOutreachRunner'
-import type { Campaign, Enrollment, Mailbox, OutreachState, Pitch, SavedLead, Sender, SendResult } from '../lib/types'
+import type { Campaign, ClientProfile, Enrollment, Mailbox, OutreachState, Pitch, SavedLead, Sender, SendResult } from '../lib/types'
+import EmailPreview from './EmailPreview'
 import MailboxSettings from './MailboxSettings'
 
 type Props = {
@@ -15,6 +17,7 @@ type Props = {
   mailbox: Mailbox
   onMailbox: (m: Mailbox) => void
   sender: Sender
+  profile?: ClientProfile // set when the active profile is a client: AI drafts are written as the client
   now: Date
   pitchFor: (s: SavedLead) => Pitch
   markContacted: (s: SavedLead) => void
@@ -129,6 +132,26 @@ export default function OutreachTab(p: Props) {
     if (s.status === 'new') p.markContacted(s)
   }
 
+  function preview(e: Enrollment, s: SavedLead | undefined) {
+    if (!s || e.state !== 'active') return null
+    const step = e.nextStep
+    const built = buildStepEmail({ enrollment: e, saved: s, pitch: p.pitchFor(s), campaign: state.campaign, sender })
+    return (
+      <EmailPreview
+        key={`${e.leadId}:${step}`}
+        built={built} step={step} sender={sender} hasDraft={!!e.drafts?.[step]} locked={!!e.pendingSend || p.status.running}
+        onAi={async () => {
+          const draft = await aiDraftFor({ saved: s, enrollment: e, step, sender, profile: p.profile, pitch: p.pitchFor(s), campaign: state.campaign })
+          // Only apply it if the lead is still on that step (a send may have finished meanwhile).
+          if (draft) p.update((cur) => (cur.enrollments[e.leadId]?.nextStep === step ? setDraft(cur, e.leadId, step, draft) : cur))
+          return !!draft
+        }}
+        onSave={(d) => p.update((cur) => (cur.enrollments[e.leadId]?.nextStep === step ? setDraft(cur, e.leadId, step, d) : cur))}
+        onReset={() => p.update((cur) => setDraft(cur, e.leadId, step, undefined))}
+      />
+    )
+  }
+
   function renderRow(e: Enrollment) {
     const s = saved[e.leadId]
     const at = dueAt(e, state.campaign)
@@ -143,6 +166,7 @@ export default function OutreachTab(p: Props) {
         <p className="break-all text-slate-600">{e.email}</p>
         {e.lastError && <p className="text-red-700">{e.lastError}</p>}
         {built && !built.ok && <p className="text-red-700">{built.error}</p>}
+        {preview(e, s)}
         {e.pendingSend ? (
           <div className="space-y-1">
             <p className="text-amber-800">Send result unknown, check your Sent folder</p>
@@ -222,6 +246,7 @@ export default function OutreachTab(p: Props) {
                   <span className="text-slate-500">{enrollmentLabel(e, state.campaign)}</span>
                 </div>
                 <p className="break-all text-slate-600">{e.email}</p>
+                {!dueIds.has(e.leadId) && !e.pendingSend && preview(e, saved[e.leadId])}
                 {e.history.length > 0 && (
                   <ul className="text-xs text-slate-500">
                     {e.history.map((h) => <li key={h.step}>Step {h.step + 1}, {when(h.sentAt)}, {h.via === 'smtp' ? 'sent by Lead Finder' : 'sent manually'}</li>)}

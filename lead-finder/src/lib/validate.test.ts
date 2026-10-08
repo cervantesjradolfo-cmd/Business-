@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { cleanKeywords, isEmail, parseAuditRequest, parsePitchRequest, parseProjectsRequest, parseSearchRequest, parseSendRequest } from './validate'
+import { cleanKeywords, isEmail, parseAuditRequest, parseFollowUpRequest, parsePitchRequest, parseProjectsRequest, parseSearchRequest, parseSendRequest } from './validate'
 
 describe('parseSearchRequest', () => {
   it('applies defaults and trims', () => {
@@ -126,5 +126,26 @@ describe('parseSendRequest', () => {
     expect(JSON.stringify(r)).not.toContain('secret')
     const r2 = parseSendRequest({ ...good, smtp: { ...good.smtp, host: 'bad host!' } })
     expect(JSON.stringify(r2)).not.toContain('bad host')
+  })
+})
+
+describe('parseFollowUpRequest', () => {
+  const ok = { lead: { name: ' Summit ' }, sender: { name: 'Asher', business: 'Asher Co' }, step: 2, previousSubject: 'S', previousBody: ' Hi there ' }
+  it('accepts steps 1 and 2 and trims and caps fields', () => {
+    const r = parseFollowUpRequest({ ...ok, previousBody: 'x'.repeat(6000), offer: { services: 'drywall', sellingPoints: ' ' }, project: { address: '1 Main', issued: '2026-10-06' } })
+    expect(r.ok && r.value).toEqual({
+      lead: { name: 'Summit', category: 'business', city: undefined },
+      sender: { name: 'Asher', business: 'Asher Co' },
+      step: 2, previousSubject: 'S', previousBody: 'x'.repeat(5000),
+      offer: { services: 'drywall' },
+      project: { address: '1 Main', description: '', issued: '2026-10-06' },
+    })
+  })
+  it('refuses a missing name, a bad step or no earlier email', () => {
+    expect(parseFollowUpRequest({ ...ok, lead: {} })).toEqual({ ok: false, error: 'Business name is required' })
+    expect(parseFollowUpRequest({ ...ok, step: 0 })).toEqual({ ok: false, error: 'Invalid follow-up step' })
+    expect(parseFollowUpRequest({ ...ok, step: 3 }).ok).toBe(false)
+    expect(parseFollowUpRequest({ ...ok, previousBody: '  ' })).toEqual({ ok: false, error: 'The earlier email is required' })
+    expect(parseFollowUpRequest(null).ok).toBe(false)
   })
 })
