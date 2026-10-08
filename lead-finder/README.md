@@ -50,6 +50,10 @@ signed-out request is refused. It needs these environment variables:
 
 Re-run it after code changes to redeploy. Enter the access key in the app under "Your details".
 
+## Search many places at once
+
+Business searches have **One place** and **Many places**. With **Many places**, type or paste places one per line (cities, ZIP codes or addresses), or use **Fill with** to load the 50 largest US cities or a state's biggest cities (`src/data/places.ts`). The app searches each place in turn with the same category, radius and **Max per place**, adds new leads to one list (a business found from two places is listed once) and checks their websites as it goes. A place that can't be searched is skipped and named at the end. **Stop** ends the run and keeps what was found. Each place takes about 5 to 30 seconds, so keep the tab open for long lists (up to 100 places).
+
 ## Client profiles
 
 Lead Finder can also find customers for your clients. Pick a profile in **Finding leads for** at the top:
