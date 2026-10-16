@@ -12,7 +12,7 @@ const lead = (id: string, extra: Partial<SavedLead['lead']> = {}, status: SavedL
   lead: { id, osmType: 'node', osmId: 1, osmUrl: '', name: `Biz ${id}`, category: 'Cafe', categoryId: 'cafes', address: '', lat: 0, lon: 0, distanceKm: 1, email: `${id}@biz.example.com`, ...extra },
   status, notes: '', savedAt: '', updatedAt: '', ...s,
 })
-const empty = (): OutreachState => ({ campaign: DEFAULT_CAMPAIGN, enrollments: {}, suppressed: [], sentToday: { day: '', count: 0 } })
+const empty = (): OutreachState => ({ campaign: DEFAULT_CAMPAIGN, enrollments: {}, suppressed: [], sentToday: { day: '', count: 0 }, replies: {} })
 const T0 = new Date('2026-10-01T09:00:00')
 const DAY = 86_400_000
 const pitch = (body = `Hi there${emailFooter(SENDER)}`): Pitch => ({ email: { subject: 'Quick idea', body }, sms: '', phoneOpener: '', source: 'ai' })

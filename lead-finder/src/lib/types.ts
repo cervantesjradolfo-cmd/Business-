@@ -176,6 +176,8 @@ export type OutreachState = {
   enrollments: Record<string, Enrollment> // by leadId
   suppressed: string[] // lower-cased addresses, unique
   sentToday: { day: string; count: number } // day = local YYYY-MM-DD; SMTP sends only
+  replies: Record<string, Reply> // by Reply.id
+  inboxCheckedAt?: string // ISO, last successful reply check
 }
 export type Mailbox = {
   host: string
@@ -187,6 +189,7 @@ export type Mailbox = {
   fromAddress: string
   gapSeconds: number // 20..300, default 45
   dailyCap: number // 1..200, default 30
+  imapHost: string // incoming mail server for reply checks (port 993, TLS); '' = replies aren't checked
 }
 export type SendRequest = {
   smtp: { host: string; port: number; secure: boolean; user: string; pass: string }
@@ -199,3 +202,47 @@ export type SendRequest = {
 }
 export type SendErrorCode = 'invalid' | 'suppressed' | 'host' | 'auth' | 'connection' | 'timeout' | 'rejected' | 'access' | 'unavailable'
 export type SendResult = { ok: true; messageId: string } | { ok: false; code: SendErrorCode; error: string }
+
+// ---- Replies (reading the outreach mailbox over IMAP) ----
+export type InboxRequest = {
+  imap: { host: string; user: string; pass: string } // port 993 with TLS
+  since: string // ISO; messages received on or after this day are checked
+  addresses: string[] // lower-cased outreach addresses (a reply from one of these matches)
+  messageIds: string[] // "<...>" ids of emails Lead Finder sent (a reply that references one matches)
+}
+// One message in the inbox that answers an outreach email. `text` is the new part only (quoted text removed).
+export type InboxMessage = {
+  id: string // the Message-ID, or a stable "uid:..." key when the message has none
+  from: string // lower-cased address
+  fromName?: string
+  subject: string
+  date: string // ISO
+  messageId?: string // "<...>"
+  refs: string[] // ids from In-Reply-To / References that are in the request's messageIds
+  text: string
+  auto: boolean // an out-of-office or other automatic reply
+}
+export type InboxErrorCode = 'invalid' | 'host' | 'auth' | 'connection' | 'timeout' | 'access' | 'unavailable'
+export type InboxResult = { ok: true; messages: InboxMessage[] } | { ok: false; code: InboxErrorCode; error: string }
+
+export type ReplyIntent = 'interested' | 'question' | 'not_now' | 'not_interested' | 'unsubscribe' | 'auto_reply' | 'other'
+export type ReplyRequest = {
+  lead: Pick<Lead, 'name' | 'category' | 'city'>
+  sender: Pick<Sender, 'name' | 'business'>
+  services: ServiceId[] // agency profile: the services that were pitched (the server adds their prices)
+  offer?: Offer // client profile: what the client does
+  ourEmail: { subject: string; body: string } // the last email sent to them, without the footer
+  theirReply: string
+}
+export type ReplyDraft = { intent: ReplyIntent; summary: string; body: string } // body has no signature or opt-out line
+export type ReplyDraftResponse = { draft: ReplyDraft | null } // null = AI not available
+
+// A reply as kept in the outreach state.
+export type Reply = InboxMessage & {
+  leadId: string
+  receivedAt: string // ISO, when Lead Finder found it
+  intent?: ReplyIntent
+  summary?: string
+  draft?: { body: string; source: 'ai' | 'edited' }
+  handled?: { at: string; how: 'sent' | 'manual' | 'dismissed' | 'auto' }
+}

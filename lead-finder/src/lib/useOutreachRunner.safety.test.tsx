@@ -7,7 +7,7 @@ import { useOutreachRunner } from './useOutreachRunner'
 import type { Mailbox, OutreachState, Pitch, SavedLead, Sender } from './types'
 
 const SENDER: Sender = { name: 'Sam', business: 'Acme Web', email: '', phone: '', address: '1 Main St', website: '' }
-const MAILBOX: Mailbox = { host: 'smtp.gmail.com', port: 465, secure: true, user: 'u@gmail.com', pass: 'secret-pw', fromName: 'Sam', fromAddress: 'u@gmail.com', gapSeconds: 20, dailyCap: 30 }
+const MAILBOX: Mailbox = { host: 'smtp.gmail.com', port: 465, secure: true, user: 'u@gmail.com', pass: 'secret-pw', fromName: 'Sam', fromAddress: 'u@gmail.com', gapSeconds: 20, dailyCap: 30, imapHost: '' }
 const mk = (id: string, status: SavedLead['status'] = 'new'): SavedLead => ({
   lead: { id, osmType: 'node', osmId: 1, osmUrl: '', name: `Biz ${id}`, category: 'Cafe', categoryId: 'cafes', address: '', lat: 0, lon: 0, distanceKm: 1, email: `${id}@biz.example.com` },
   status, notes: '', savedAt: '', updatedAt: '',

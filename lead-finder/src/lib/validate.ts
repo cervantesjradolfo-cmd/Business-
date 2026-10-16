@@ -1,7 +1,7 @@
 import { PRICING } from '../data/pricing.js'
 import { getCategory } from '../data/categories.js'
 import { GAP_DEFS } from './gaps.js'
-import type { AuditRequest, FollowUpRequest, GapId, Offer, PitchRequest, ProjectsRequest, SearchRequest, SendRequest, Sender, ServiceId, CategoryId } from './types.js'
+import type { AuditRequest, FollowUpRequest, GapId, InboxRequest, Offer, PitchRequest, ProjectsRequest, ReplyRequest, SearchRequest, SendRequest, Sender, ServiceId, CategoryId } from './types.js'
 
 export type Parsed<T> = { ok: true; value: T } | { ok: false; error: string }
 const fail = (error: string): { ok: false; error: string } => ({ ok: false, error })
@@ -202,6 +202,53 @@ export function parseFollowUpRequest(body: unknown): Parsed<FollowUpRequest> {
       previousBody,
       ...(offer ? { offer: { services: optStr(offer.services, 300) ?? '', ...(points ? { sellingPoints: points } : {}) } } : {}),
       ...(project ? { project: { address: optStr(project.address) ?? '', description: optStr(project.description, 300) ?? '', issued: optStr(project.issued, 10) ?? '' } } : {}),
+    },
+  }
+}
+
+// Error strings never contain submitted values (the request carries a mailbox password).
+export function parseInboxRequest(body: unknown): Parsed<InboxRequest> {
+  if (!isObj(body) || !isObj(body.imap)) return fail('Invalid request')
+  const { imap } = body
+  const host = typeof imap.host === 'string' ? imap.host.trim() : ''
+  if (host.length < 1 || host.length > 253 || !HOST_RE.test(host.replace(/^\[|\]$/g, ''))) return fail('Enter a valid incoming mail server (IMAP) host')
+  const user = typeof imap.user === 'string' ? imap.user : ''
+  if (user.length < 1 || user.length > 254 || hasNewline(user)) return fail('Enter the mailbox username')
+  const pass = typeof imap.pass === 'string' ? imap.pass : ''
+  if (pass.length < 1 || pass.length > 200 || hasNewline(pass)) return fail('Enter the mailbox app password')
+  const since = typeof body.since === 'string' ? new Date(body.since) : new Date(NaN)
+  if (Number.isNaN(since.getTime())) return fail('Invalid date')
+  const rawAddr = Array.isArray(body.addresses) ? body.addresses : []
+  const rawIds = Array.isArray(body.messageIds) ? body.messageIds : []
+  if (rawAddr.length > 2000 || rawIds.length > 5000) return fail('Too many addresses')
+  const addresses = [...new Set(rawAddr.filter((v): v is string => typeof v === 'string').map((v) => v.trim().toLowerCase()).filter(isEmail))]
+  const messageIds = [...new Set(rawIds.filter((v): v is string => typeof v === 'string' && /^<[^<>\s]{1,250}>$/.test(v)))]
+  if (addresses.length === 0) return fail('No outreach addresses to check')
+  return { ok: true, value: { imap: { host, user, pass }, since: since.toISOString(), addresses, messageIds } }
+}
+
+export function parseReplyRequest(body: unknown): Parsed<ReplyRequest> {
+  if (!isObj(body) || !isObj(body.lead)) return fail('Invalid request')
+  const name = optStr(body.lead.name)
+  if (!name) return fail('Business name is required')
+  const theirReply = typeof body.theirReply === 'string' ? body.theirReply.trim().slice(0, 5000) : ''
+  if (!theirReply) return fail('The reply is empty')
+  const ours = isObj(body.ourEmail) ? body.ourEmail : {}
+  const s = isObj(body.sender) ? body.sender : {}
+  const offer = isObj(body.offer) ? body.offer : undefined
+  const points = offer ? optStr(offer.sellingPoints, 500) : undefined
+  const services = (Array.isArray(body.services) ? body.services : []).filter(
+    (v): v is ServiceId => typeof v === 'string' && Object.hasOwn(PRICING, v),
+  )
+  return {
+    ok: true,
+    value: {
+      lead: { name, category: optStr(body.lead.category) ?? 'business', city: optStr(body.lead.city) },
+      sender: { name: reqStr(s.name), business: reqStr(s.business) },
+      services,
+      ...(offer ? { offer: { services: optStr(offer.services, 300) ?? '', ...(points ? { sellingPoints: points } : {}) } } : {}),
+      ourEmail: { subject: optStr(ours.subject, 300) ?? '', body: typeof ours.body === 'string' ? ours.body.trim().slice(0, 5000) : '' },
+      theirReply,
     },
   }
 }

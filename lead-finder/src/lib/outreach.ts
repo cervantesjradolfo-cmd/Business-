@@ -2,6 +2,7 @@
 // Edit the default follow-up wording here.
 import { STATUS_LABELS } from './csv'
 import { emailFooter } from './pitch'
+import { IMAP_HOSTS, loadReplies } from './replies'
 import { readJson } from './storage'
 import { isEmail } from './validate'
 import type {
@@ -22,14 +23,14 @@ export const DEFAULT_CAMPAIGN: Campaign = {
 }
 
 export const EMPTY_MAILBOX: Mailbox = {
-  host: '', port: 465, secure: true, user: '', pass: '', fromName: '', fromAddress: '', gapSeconds: 45, dailyCap: 30,
+  host: '', port: 465, secure: true, user: '', pass: '', fromName: '', fromAddress: '', gapSeconds: 45, dailyCap: 30, imapHost: '',
 }
 
-export const MAILBOX_PRESETS: { id: 'gmail' | 'outlook' | 'zoho' | 'other'; label: string; host: string; port: 465 | 587 }[] = [
-  { id: 'gmail', label: 'Gmail / Google Workspace', host: 'smtp.gmail.com', port: 465 },
-  { id: 'outlook', label: 'Outlook / Microsoft 365', host: 'smtp.office365.com', port: 587 },
-  { id: 'zoho', label: 'Zoho Mail', host: 'smtp.zoho.com', port: 465 },
-  { id: 'other', label: 'Other SMTP', host: '', port: 587 },
+export const MAILBOX_PRESETS: { id: 'gmail' | 'outlook' | 'zoho' | 'other'; label: string; host: string; port: 465 | 587; imapHost: string }[] = [
+  { id: 'gmail', label: 'Gmail / Google Workspace', host: 'smtp.gmail.com', port: 465, imapHost: IMAP_HOSTS['smtp.gmail.com'] },
+  { id: 'outlook', label: 'Outlook / Microsoft 365', host: 'smtp.office365.com', port: 587, imapHost: IMAP_HOSTS['smtp.office365.com'] },
+  { id: 'zoho', label: 'Zoho Mail', host: 'smtp.zoho.com', port: 465, imapHost: IMAP_HOSTS['smtp.zoho.com'] },
+  { id: 'other', label: 'Other SMTP', host: '', port: 587, imapHost: '' },
 ]
 
 const DAY_MS = 86_400_000
@@ -404,6 +405,8 @@ export function loadOutreach(key: string): OutreachState {
     enrollments,
     suppressed,
     sentToday: { day: typeof st.day === 'string' ? st.day : '', count: clampInt(st.count, 0, 1_000_000, 0) },
+    replies: loadReplies(r.replies),
+    ...(isoOrEmpty(r.inboxCheckedAt) ? { inboxCheckedAt: r.inboxCheckedAt as string } : {}),
   }
 }
 
@@ -423,5 +426,7 @@ export function loadMailbox(key: string): Mailbox {
     fromAddress: str(r.fromAddress).trim(),
     gapSeconds: clampInt(r.gapSeconds, 20, 300, EMPTY_MAILBOX.gapSeconds),
     dailyCap: clampInt(r.dailyCap, 1, 200, EMPTY_MAILBOX.dailyCap),
+    // Mailboxes saved before reply checks existed get their provider's IMAP server.
+    imapHost: typeof r.imapHost === 'string' ? r.imapHost.trim() : (IMAP_HOSTS[str(r.host).trim()] ?? ''),
   }
 }

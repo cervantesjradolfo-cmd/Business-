@@ -42,12 +42,12 @@ export default function MailboxSettings({ mailbox, sender, onSave, onTest }: Pro
 
   function pickPreset(id: string) {
     const p = MAILBOX_PRESETS.find((x) => x.id === id)
-    if (p) edit({ host: p.host, port: p.port, secure: p.port === 465 })
+    if (p) edit({ host: p.host, port: p.port, secure: p.port === 465, imapHost: p.imapHost })
   }
 
   function save() {
     if (missing) return
-    onSave({ ...m, host: m.host.trim(), fromAddress: m.fromAddress.trim() })
+    onSave({ ...m, host: m.host.trim(), fromAddress: m.fromAddress.trim(), imapHost: m.imapHost.trim() })
     setSaved(true)
   }
 
@@ -64,7 +64,7 @@ export default function MailboxSettings({ mailbox, sender, onSave, onTest }: Pro
   return (
     <section aria-label="Mailbox" className="space-y-3 rounded-xl border border-slate-200 bg-white p-4">
       <h3 className="text-sm font-semibold">Mailbox</h3>
-      <p className="text-xs text-slate-500">Stored only in this browser. Sent to your server only when an email is sent.</p>
+      <p className="text-xs text-slate-500">Stored only in this browser. Sent to your server only when an email is sent or replies are checked.</p>
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="block">
           <span className={caption}>Provider</span>
@@ -81,6 +81,10 @@ export default function MailboxSettings({ mailbox, sender, onSave, onTest }: Pro
           <select value={m.port} onChange={(e) => edit({ port: Number(e.target.value) as Mailbox['port'], secure: e.target.value === '465' })} className={input}>
             {PORTS.map((p) => <option key={p} value={p}>{p === 465 ? '465 (SSL)' : `${p} (STARTTLS)`}</option>)}
           </select>
+        </label>
+        <label className="block">
+          <span className={caption}>Incoming mail server (IMAP, for replies)</span>
+          <input value={m.imapHost} maxLength={253} onChange={(e) => edit({ imapHost: e.target.value })} placeholder="imap.example.com" className={input} />
         </label>
         <label className="block">
           <span className={caption}>Username</span>
