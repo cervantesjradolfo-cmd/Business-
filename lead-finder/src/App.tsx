@@ -10,6 +10,7 @@ import { canEnroll, dueSteps, enroll, enrollmentLabel, outreachEmailFor, suppres
 import { mailboxKey, outreachKey, useMailbox, useOutreach } from './lib/outreachStore'
 import { buildTemplatePitch, pitchRequestFor } from './lib/pitch'
 import { useOutreachRunner } from './lib/useOutreachRunner'
+import { useReplies } from './lib/useReplies'
 import { isEmail } from './lib/validate'
 import { scoreLead } from './lib/scoring'
 import { EMPTY_SENDER, savedKey, useProfiles, useSavedLeads, useSender } from './lib/storage'
@@ -313,6 +314,12 @@ function Workspace({ profile, sender, header, settingsOpen, onOpenSettings }: Wo
   const runner = useOutreachRunner({
     outreach, outreachKey: outreachStoreKey, saved, mailbox, sender, profile, pitchFor: pitchForSaved, markContacted,
   })
+  const markReplied = useCallback((s: SavedLead) => {
+    if (s.status === 'new' || s.status === 'contacted') setStatus(s.lead, s.audit, 'replied')
+  }, [setStatus])
+  const replies = useReplies({
+    outreach, outreachKey: outreachStoreKey, saved, mailbox, sender, profile, pitchFor: pitchForSaved, markReplied, auto: runner.status.auto,
+  })
   useEffect(() => {
     const id = setInterval(() => setTick((t) => t + 1), 60_000)
     return () => clearInterval(id)
@@ -411,7 +418,7 @@ function Workspace({ profile, sender, header, settingsOpen, onOpenSettings }: Wo
           <OutreachTab
             state={outreach.state} update={outreach.update} saved={saved} mailbox={mailbox} onMailbox={setMailbox}
             sender={sender} profile={profile} now={now} pitchFor={pitchForSaved} markContacted={markContacted}
-            status={runner.status} onRun={runner.runNow} onStop={runner.stop} onAuto={runner.setAuto} onTest={runner.sendTest}
+            status={runner.status} onRun={runner.runNow} onStop={runner.stop} onAuto={runner.setAuto} onTest={runner.sendTest} replies={replies}
             onOpenLead={(id) => { setTab('saved'); setSelectedId(id) }} onOpenSettings={onOpenSettings}
           />
         )}

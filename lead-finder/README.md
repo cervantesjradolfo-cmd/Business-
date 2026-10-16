@@ -20,7 +20,7 @@ npm install
 npm run dev
 ```
 
-Open the address Vite prints. The API (`/api/search`, `/api/audit`, `/api/pitch`, `/api/projects`, `/api/send`) runs inside the dev server, so nothing else is needed.
+Open the address Vite prints. The API (`/api/search`, `/api/audit`, `/api/pitch`, `/api/projects`, `/api/send`, `/api/followup`, `/api/inbox`, `/api/reply`) runs inside the dev server, so nothing else is needed.
 
 Other commands: `npm run build`, `npm test`, `npm run lint`.
 
@@ -89,7 +89,7 @@ Only put true facts in **Selling points**: they go into the pitches as written, 
 
 ## Protect your deployment
 
-The API endpoints are open to anyone who knows the URL: `/api/pitch` spends your Anthropic credit, `/api/audit` fetches websites from your server, `/api/search` sends traffic to OpenStreetMap under your contact e-mail, and `/api/send` sends mail through whatever mailbox the caller supplies (it cannot read your mailbox, but anyone can use your server to send mail from their own). Before you share a deployed URL, do at least one of these:
+The API endpoints are open to anyone who knows the URL: `/api/pitch` spends your Anthropic credit, `/api/audit` fetches websites from your server, `/api/search` sends traffic to OpenStreetMap under your contact e-mail, `/api/send` sends mail through whatever mailbox the caller supplies (anyone can use your server to send mail from their own), and `/api/inbox` reads the inbox of whatever mailbox the caller supplies. Before you share a deployed URL, do at least one of these:
 
 - Set `APP_ACCESS_KEY` in Vercel (Settings, Environment Variables) and redeploy. Open the app, press **Your details**, and paste the same key into "Access key". The key is stored only in your browser. Without it the app shows "Access key required".
 - Turn on **Vercel Deployment Protection** (Settings, Deployment Protection, for example Vercel Authentication or Password Protection) so only people you allow can reach the site at all.
@@ -111,7 +111,8 @@ The API endpoints are open to anyone who knows the URL: `/api/pitch` spends your
 | The business categories and their OpenStreetMap tags | `src/data/categories.ts` |
 | Gap labels, weights, services and detection lists | `src/lib/gaps.ts` |
 | Template emails, texts and call openers | `src/lib/pitch.ts` |
-| The AI prompt and model | `server/ai.ts` |
+| The AI prompts (pitches, follow-ups, reply drafts) and model | `server/ai.ts` |
+| Opt-out phrases and how replies are matched to leads | `src/lib/replies.ts` |
 | The demo dataset | `src/data/demo.ts` |
 | The client profiles that exist on first run | `src/data/profiles.ts` |
 | The client-profile pitch template | `buildClientPitch` in `src/lib/pitch.ts` |
@@ -141,13 +142,26 @@ Every queued email has a **Preview** link (on its Due now row, or under In outre
 
 If the app is closed while an email is being sent, that lead shows "Send result unknown, check your Sent folder". Press **Mark as sent** or **Retry**. It is never sent twice automatically.
 
+### Replies
+
+The **Replies** section at the top of the Outreach tab reads your mailbox for answers to your outreach emails (`POST /api/inbox`, over IMAP on port 993), using the same username and app password as sending.
+
+- Press **Check for replies**, or turn on **Auto-send while this tab is open** and replies are checked every 5 minutes too.
+- A reply is matched to its lead by the address you emailed, or by the email it answers when they write back from another address. The lead is set to **Replied**, so its follow-ups stop.
+- Out-of-office and other automatic replies are skipped and don't stop the sequence.
+- Every email says to reply "no thanks" to stop, so a "no thanks", "not interested" or unsubscribe reply adds the address to **Unsubscribed addresses** right away, even without AI. It needs no answer.
+- With `ANTHROPIC_API_KEY`, the AI sorts each reply (Interested, Has a question, Not now, Not interested, Unsubscribe, Auto-reply, Other), says in one line what they want, and drafts your answer (`POST /api/reply`). It uses only your services and the price ranges in `src/data/pricing.ts` (or a client profile's offer and selling points), and is told never to invent anything else.
+- **Nothing is sent without you.** Read and edit the draft, then press **Send answer**. It goes from your mailbox as a reply in the same thread, with your signature, the opt-out line and their message quoted. **Open in email app**, **Mark as answered** and **No answer needed** are there too.
+- Without AI, write the answer yourself in the same box.
+- Only your inbox is read, only messages from the last 45 days (and since your first outreach email), and at most the newest 400 of those. The password is used for that one check and never stored or logged.
+
 ### Connect a mailbox
 
-Open the **Mailbox** section on the Outreach tab, pick a provider, enter your username and an app password, press **Save mailbox**, then **Send test email to myself**.
+Open the **Mailbox** section on the Outreach tab, pick a provider, enter your username and an app password, press **Save mailbox**, then **Send test email to myself**. Picking a provider also fills in the incoming mail server (IMAP) that Replies uses.
 
-- **Gmail / Google Workspace:** turn on 2-Step Verification, create an app password (Google Account, Security, App passwords), and use host `smtp.gmail.com`, port 465. Workspace admins may need to allow app passwords or SMTP access.
-- **Outlook / Microsoft 365:** host `smtp.office365.com`, port 587. SMTP AUTH must be enabled for the mailbox (an admin can do this), and you need an app password if you use multi-factor authentication.
-- **Zoho Mail:** host `smtp.zoho.com`, port 465.
+- **Gmail / Google Workspace:** turn on 2-Step Verification, create an app password (Google Account, Security, App passwords), and use host `smtp.gmail.com`, port 465, IMAP `imap.gmail.com`. Workspace admins may need to allow app passwords, SMTP and IMAP access.
+- **Outlook / Microsoft 365:** host `smtp.office365.com`, port 587, IMAP `outlook.office365.com`. SMTP AUTH and IMAP must be enabled for the mailbox (an admin can do this), and you need an app password if you use multi-factor authentication.
+- **Zoho Mail:** host `smtp.zoho.com`, port 465, IMAP `imap.zoho.com`. Turn on IMAP access in Zoho Mail settings.
 
 The SMTP password is kept only in this browser. It is sent to your own server with each email, used for that one send, and never stored or logged. The server refuses private and local addresses as mail servers.
 
@@ -163,7 +177,7 @@ This is not legal advice.
 
 ### Not built yet
 
-Sending while the app is closed (needs a database and Vercel Cron), reply detection through IMAP (for now, set the status to Replied yourself), open and click tracking, finding email addresses, and SMS.
+Sending and checking replies while the app is closed (needs a database and Vercel Cron), open and click tracking, finding email addresses, and SMS.
 
 ## Outreach rules
 

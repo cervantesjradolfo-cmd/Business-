@@ -5,10 +5,13 @@ import {
   senderReady, sentTodayCount, setDraft, setPending, suppress, unenroll, unknownVariables, OUTREACH_VARIABLES,
 } from '../lib/outreach'
 import { aiDraftFor } from '../lib/outreachAi'
+import { handledReplies, inboxReady, pendingReplies, updateReply } from '../lib/replies'
 import type { RunStatus } from '../lib/useOutreachRunner'
+import type { ReplyCheck } from '../lib/useReplies'
 import type { Campaign, ClientProfile, Enrollment, Mailbox, OutreachState, Pitch, SavedLead, Sender, SendResult } from '../lib/types'
 import EmailPreview from './EmailPreview'
 import MailboxSettings from './MailboxSettings'
+import RepliesPanel from './RepliesPanel'
 
 type Props = {
   state: OutreachState
@@ -26,6 +29,12 @@ type Props = {
   onStop: () => void
   onAuto: (on: boolean) => void
   onTest: () => Promise<SendResult>
+  replies: {
+    check: ReplyCheck
+    checkNow: () => void
+    draft: (id: string, force?: boolean) => Promise<boolean>
+    send: (id: string, body: string) => Promise<{ ok: boolean; error?: string }>
+  }
   onOpenLead: (id: string) => void
   onOpenSettings: () => void
 }
@@ -203,6 +212,15 @@ export default function OutreachTab(p: Props) {
           No mailbox set up: use Open in email app, then Mark as sent
         </p>
       )}
+
+      <RepliesPanel
+        pending={pendingReplies(state)} handled={handledReplies(state)} saved={saved} sender={sender}
+        canCheck={inboxReady(mailbox)} canSend={smtp} checkedAt={state.inboxCheckedAt} check={p.replies.check}
+        onCheck={p.replies.checkNow} onDraft={(id) => p.replies.draft(id, true)} onSend={p.replies.send}
+        onSaveDraft={(id, body) => p.update((cur) => updateReply(cur, id, { draft: { body, source: 'edited' } }))}
+        onHandled={(id, how) => p.update((cur) => updateReply(cur, id, { handled: { at: new Date().toISOString(), how } }))}
+        onOpenLead={p.onOpenLead}
+      />
 
       <section aria-label="Due now" className={section}>
         <h3 className="text-sm font-semibold">Due now ({due.length})</h3>

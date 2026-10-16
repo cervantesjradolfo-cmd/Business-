@@ -1,6 +1,9 @@
 import { buildTemplatePitch } from './pitch'
 import { getAccessKey } from './storage'
-import type { AuditResult, FollowUpRequest, FollowUpResponse, Pitch, PitchRequest, ProjectsRequest, ProjectsResponse, SearchRequest, SearchResponse, SendRequest, SendResult } from './types'
+import type {
+  AuditResult, FollowUpRequest, FollowUpResponse, InboxRequest, InboxResult, Pitch, PitchRequest, ProjectsRequest, ProjectsResponse,
+  ReplyDraft, ReplyDraftResponse, ReplyRequest, SearchRequest, SearchResponse, SendRequest, SendResult,
+} from './types'
 
 export class ApiUnavailableError extends Error {}
 
@@ -102,4 +105,35 @@ export async function sendEmail(req: SendRequest, signal?: AbortSignal): Promise
     // not JSON: no backend here
   }
   return unavailable
+}
+
+// Reads replies from the caller's own mailbox. Keeps the error `code`, like sendEmail.
+export async function checkInbox(req: InboxRequest, signal?: AbortSignal): Promise<InboxResult> {
+  const unavailable: InboxResult = { ok: false, code: 'unavailable', error: 'Could not reach the server.' }
+  let res: Response
+  try {
+    res = await fetch(`${BASE}/api/inbox`, { method: 'POST', headers: accessHeaders(), body: JSON.stringify(req), signal })
+  } catch (e) {
+    if (signal?.aborted) throw e
+    return unavailable
+  }
+  if (res.status === 401) return { ok: false, code: 'access', error: 'Access key required. Add your access key under "Your details".' }
+  try {
+    const data = (await res.json()) as Partial<InboxResult> | null
+    if (data && typeof data === 'object' && typeof data.ok === 'boolean') return data as InboxResult
+  } catch {
+    // not JSON: no backend here
+  }
+  return unavailable
+}
+
+// The AI's reading of a reply and its draft answer, or null when AI isn't set up on the server (or the call fails).
+export async function fetchReplyDraft(req: ReplyRequest, signal?: AbortSignal): Promise<ReplyDraft | null> {
+  try {
+    const data = await post<ReplyDraftResponse>('reply', req, signal)
+    return data.draft && typeof data.draft.intent === 'string' ? data.draft : null
+  } catch (e) {
+    if (signal?.aborted) throw e
+    return null
+  }
 }
