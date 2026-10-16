@@ -19,9 +19,9 @@ describe('buildOverpassQuery', () => {
     const q = buildOverpassQuery(1, 2, 1, 'any', 10)
     for (const c of CATEGORIES) for (const s of c.selectors) expect(q).toContain(`nwr${s}["name"]`)
   })
-  it('lists three mirrors in order', () => {
+  it('lists four mirrors in order', () => {
     expect(OVERPASS_MIRRORS[0]).toContain('overpass-api.de')
-    expect(OVERPASS_MIRRORS).toHaveLength(3)
+    expect(OVERPASS_MIRRORS).toHaveLength(4)
   })
 })
 

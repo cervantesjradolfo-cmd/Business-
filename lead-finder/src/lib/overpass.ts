@@ -6,6 +6,7 @@ export const OVERPASS_MIRRORS = [
   'https://overpass-api.de/api/interpreter',
   'https://overpass.kumi.systems/api/interpreter',
   'https://maps.mail.ru/osm/tools/overpass/api/interpreter',
+  'https://overpass.private.coffee/api/interpreter',
 ] as const
 
 export function buildOverpassQuery(lat: number, lon: number, radiusKm: number, category: CategoryId, limit: number): string {
