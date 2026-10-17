@@ -1,7 +1,7 @@
-import { PRICING } from '../data/pricing'
-import { GAP_DEFS, listingGaps } from './gaps'
-import { heatFor } from './heat'
-import type { AuditResult, Gap, GapId, Lead, ScoredLead, ServiceId } from './types'
+import { PRICING } from '../data/pricing.js'
+import { GAP_DEFS, listingGaps } from './gaps.js'
+import { heatFor } from './heat.js'
+import type { AuditResult, Gap, GapId, Lead, ScoredLead, ServiceId } from './types.js'
 
 export function recommendServices(gaps: GapId[]): ServiceId[] {
   const sorted = [...gaps].filter((g) => GAP_DEFS[g]).sort((a, b) => GAP_DEFS[b].weight - GAP_DEFS[a].weight)

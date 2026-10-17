@@ -14,6 +14,7 @@ import { mailboxKey, outreachKey, useMailbox, useOutreach } from './lib/outreach
 import { buildTemplatePitch, pitchRequestFor } from './lib/pitch'
 import { useOutreachRunner } from './lib/useOutreachRunner'
 import { useReplies } from './lib/useReplies'
+import { useBackground } from './lib/useBackground'
 import { isEmail } from './lib/validate'
 import { scoreLead } from './lib/scoring'
 import { EMPTY_SENDER, savedKey, useProfiles, useSavedLeads, useSender, writeJson } from './lib/storage'
@@ -362,6 +363,17 @@ function Workspace({ profile, sender, header, settingsOpen, onOpenSettings }: Wo
   const replies = useReplies({
     outreach, outreachKey: outreachStoreKey, saved, mailbox, sender, profile, pitchFor: pitchForSaved, markReplied, auto: runner.status.auto, onNewReply,
   })
+  const background = useBackground({
+    workspace: profile?.id ?? 'agency', outreach, outreachKey: outreachStoreKey, saved, mailbox, sender, profile, pitchFor: pitchForSaved, applyStatus: changeStatus,
+  })
+  const { setAuto, stop: stopRunner } = runner
+  const backgroundControls = useMemo(() => ({
+    view: background.view,
+    // The open tab stops sending before the server takes over, so the two never send at once.
+    turnOn: () => { setAuto(false); stopRunner(); void background.turnOn() },
+    turnOff: () => void background.turnOff(),
+    runNow: () => void background.runNow(),
+  }), [background, setAuto, stopRunner])
   useEffect(() => {
     const id = setInterval(() => setTick((t) => t + 1), 60_000)
     return () => clearInterval(id)
@@ -498,7 +510,7 @@ function Workspace({ profile, sender, header, settingsOpen, onOpenSettings }: Wo
             sender={sender} profile={profile} now={now} pitchFor={pitchForSaved} markContacted={markContacted}
             status={runner.status} onRun={runner.runNow} onStop={runner.stop} onAuto={runner.setAuto} onTest={runner.sendTest} replies={replies}
             onOpenLead={(id) => { setTab('saved'); setSelectedId(id) }} onOpenSettings={onOpenSettings} onImport={importLeads}
-            onBooked={(s) => changeStatus(s, 'booked')} integrations={integrations}
+            onBooked={(s) => changeStatus(s, 'booked')} integrations={integrations} background={backgroundControls}
           />
         )}
 

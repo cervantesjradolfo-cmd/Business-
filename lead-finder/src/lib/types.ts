@@ -195,6 +195,7 @@ export type OutreachState = {
   replies: Record<string, Reply> // by Reply.id
   inboxCheckedAt?: string // ISO, last successful reply check
   mailboxStartedAt?: string // ISO, first email Lead Finder sent from this profile's mailbox (starts the warm-up)
+  removed?: Record<string, string> // leadId -> ISO when it was taken out of outreach (so a sync doesn't bring it back)
 }
 export type Mailbox = {
   host: string
@@ -296,3 +297,33 @@ export type CrmResult = {
   hubspot?: { sent: number; skipped: number; error?: string }
   ghl?: { sent: number; skipped: number; error?: string }
 }
+
+// ---- Background mode: the server sends and checks replies while the app is closed ----
+// What the server needs to know about a lead in outreach (sent by the browser with every sync).
+export type BackgroundLead = {
+  id: string
+  name: string
+  city?: string
+  category: string
+  status: LeadStatus
+  updatedAt: string // ISO, when you last changed the saved lead
+  pitch: Pitch // the first email as it would be sent
+  services: ServiceId[] // what was pitched (for AI reply drafts)
+}
+export type StatusEvent = { leadId: string; status: LeadStatus; at: string } // a status the server set
+export type BackgroundMailbox = Omit<Mailbox, 'pass'>
+export type SyncRequest = {
+  workspace: string // 'agency' or a client profile id
+  outreach: OutreachState
+  leads: Record<string, BackgroundLead>
+  sender: Sender
+  offer?: Offer
+  mailbox: Mailbox // with the password: stored encrypted on the server
+}
+export type BackgroundStatus = {
+  available: boolean // the server has a database and a secret set up
+  enabled: boolean // this profile runs in the background
+  lastRunAt?: string
+  lastRunNote?: string
+}
+export type SyncResponse = BackgroundStatus & { outreach?: OutreachState; events: StatusEvent[] }

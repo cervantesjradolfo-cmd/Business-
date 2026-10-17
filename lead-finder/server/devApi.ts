@@ -2,8 +2,8 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Plugin } from 'vite'
 
-const NAMES = new Set(['search', 'audit', 'pitch', 'projects', 'send', 'followup', 'inbox', 'reply', 'integrations', 'notify', 'crm', 'reviews'])
-const MAX_BODY = 1024 * 1024
+const NAMES = new Set(['search', 'audit', 'pitch', 'projects', 'send', 'followup', 'inbox', 'reply', 'integrations', 'notify', 'crm', 'reviews', 'background', 'cron'])
+const MAX_BODY = 5 * 1024 * 1024
 
 function sendJson(res: ServerResponse, status: number, data: unknown) {
   res.statusCode = status

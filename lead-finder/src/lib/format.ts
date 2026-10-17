@@ -1,4 +1,4 @@
-import type { Lead, ScoredLead } from './types'
+import type { Lead, ScoredLead } from './types.js'
 
 const usd = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })
 

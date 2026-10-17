@@ -1,6 +1,6 @@
-import { PRICING } from '../data/pricing'
-import { kmToMiles } from './format'
-import type { LeadStatus, SavedLead, ScoredLead } from './types'
+import { PRICING } from '../data/pricing.js'
+import { kmToMiles } from './format.js'
+import type { LeadStatus, SavedLead, ScoredLead } from './types.js'
 
 function cell(v: string | number | undefined): string {
   let s = v === undefined ? '' : String(v)

@@ -15,6 +15,8 @@ import type { ImportedRow } from '../lib/csvImport'
 import EmailPreview from './EmailPreview'
 import ImportCsv from './ImportCsv'
 import IntegrationsPanel from './IntegrationsPanel'
+import BackgroundPanel from './BackgroundPanel'
+import type { BackgroundView } from '../lib/useBackground'
 import MailboxSettings from './MailboxSettings'
 import RepliesPanel from './RepliesPanel'
 
@@ -45,6 +47,7 @@ type Props = {
   onImport: (rows: ImportedRow[], addToOutreach: boolean) => string
   onBooked: (s: SavedLead) => void // sets the lead to Meeting booked
   integrations: Integrations
+  background: { view: BackgroundView; turnOn: () => void; turnOff: () => void; runNow: () => void }
 }
 
 const btn = 'rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50'
@@ -114,7 +117,7 @@ function SequenceEditor({ campaign, onSave }: { campaign: Campaign; onSave: (c: 
         <button type="button" className={btn} onClick={() => edit({ followUps: [...draft.followUps, { delayDays: 7, body: 'Hi {{business}} team,\n\n' }] })}>Add follow-up</button>
       )}
       <p className="text-xs text-slate-500">
-        Variables: {OUTREACH_VARIABLES.map((v) => `{{${v}}}`).join(' ')} ({'{{booking_link}}'} is the booking link from your details). Your signature and the opt-out line are added automatically.
+        Variables: {OUTREACH_VARIABLES.map((v) => `{{${v}}}`).join(' ')}. The last one is the booking link from your details. Your signature and the opt-out line are added automatically.
         Follow-ups are sent as replies to the first email.
       </p>
       {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
@@ -139,6 +142,7 @@ export default function OutreachTab(p: Props) {
   const countdown = useCountdown(status.nextAt)
   const enrolled = Object.values(state.enrollments).sort((a, b) => a.enrolledAt.localeCompare(b.enrolledAt))
   const sentToday = sentTodayCount(state, now)
+  const bg = p.background.view.enabled
 
   function markSent(e: Enrollment) {
     const s = saved[e.leadId]
@@ -229,10 +233,12 @@ export default function OutreachTab(p: Props) {
         </p>
       )}
 
+      <BackgroundPanel view={p.background.view} canTurnOn={smtp && ready} onTurnOn={p.background.turnOn} onTurnOff={p.background.turnOff} onRunNow={p.background.runNow} />
+
       <RepliesPanel
         pending={pendingReplies(state)} handled={handledReplies(state)} saved={saved} sender={sender}
         canCheck={inboxReady(mailbox)} canSend={smtp} checkedAt={state.inboxCheckedAt} check={p.replies.check}
-        onCheck={p.replies.checkNow} onDraft={(id) => p.replies.draft(id, true)} onSend={p.replies.send}
+        onCheck={bg ? p.background.runNow : p.replies.checkNow} onDraft={(id) => p.replies.draft(id, true)} onSend={p.replies.send}
         onSaveDraft={(id, body) => p.update((cur) => updateReply(cur, id, { draft: { body, source: 'edited' } }))}
         onHandled={(id, how) => p.update((cur) => updateReply(cur, id, { handled: { at: new Date().toISOString(), how } }))}
         onBooked={(id) => {
@@ -251,7 +257,12 @@ export default function OutreachTab(p: Props) {
         ) : (
           <ul className="space-y-2">{rows.map(renderRow)}</ul>
         )}
-        {smtp && (
+        {smtp && bg && (
+          <p className="border-t border-slate-100 pt-3 text-sm text-slate-600">
+            The server sends these on schedule (Run while the app is closed is on). {sentToday} of {effectiveDailyCap(mailbox, state.mailboxStartedAt, now)} sent today.
+          </p>
+        )}
+        {smtp && !bg && (
           <div className="space-y-2 border-t border-slate-100 pt-3">
             <div className="flex flex-wrap items-center gap-2">
               <button type="button" className={primary} disabled={status.running || !ready || due.length === 0} onClick={p.onRun}>Send due emails</button>

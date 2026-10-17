@@ -129,6 +129,7 @@ The tokens and webhook addresses stay on the server (`GET /api/integrations` onl
 | `VITE_API_BASE` | Optional. Front-end only. Points the app at an API on another origin. |
 | `SLACK_WEBHOOK_URL`, `ALERT_WEBHOOK_URL`, `HUBSPOT_TOKEN`, `GHL_TOKEN`, `GHL_LOCATION_ID` | Optional. Alerts and CRM sync, see "Alerts and CRM sync". |
 | `GOOGLE_PLACES_API_KEY` | Optional. Turns on **Check Google reviews** in the lead panel, see "Heat". |
+| `KV_REST_API_URL`, `KV_REST_API_TOKEN`, `BACKGROUND_SECRET`, `CRON_SECRET` | Optional. **Run while the app is closed**, see that section. |
 
 ## Protect your deployment
 
@@ -246,9 +247,27 @@ The server (`/api/send`) repeats the checks it can make from the email alone, so
 
 This is not legal advice.
 
+### Run while the app is closed
+
+Normally Lead Finder only sends and checks replies while its tab is open. **Run while the app is closed** (on the Outreach tab, per profile) moves that to your server: on a schedule it checks replies (and drafts answers, alerts and updates the CRM) and sends due emails with the same sequence, sending hours, warm-up, daily limit, gap between emails and compliance check. You still read and send every answer to a reply yourself.
+
+Set it up once:
+
+1. **Database.** In Vercel, open your project, then **Storage** (or **Marketplace**), add **Upstash Redis** (the free plan is enough) and connect it to the project. That sets `KV_REST_API_URL` and `KV_REST_API_TOKEN`. (`UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` work too.)
+2. **Secrets.** Under **Settings, Environment Variables** add `BACKGROUND_SECRET` (a random string of 32 or more characters; it encrypts your mailbox password) and `CRON_SECRET` (a random string of 16 or more characters). Redeploy.
+3. **Schedule.** `vercel.json` runs it once a day (14:00 UTC), which is all Vercel's free Hobby plan allows. To send through the day, add a free job at [cron-job.org](https://cron-job.org) that calls `https://<your site>/api/cron` every 5 minutes with the header `Authorization: Bearer <your CRON_SECRET>`. Because your site is behind Vercel Authentication, create a bypass secret under **Settings, Deployment Protection, Protection Bypass for Automation** and add it as a second header, `x-vercel-protection-bypass: <that secret>`. (On Vercel Pro you can instead change the schedule in `vercel.json` to `*/5 * * * *`.)
+4. **Turn it on.** On the Outreach tab, **Run while the app is closed**, press **Turn on**. The tab stops sending on its own; **Run now** runs it immediately.
+
+How it works:
+
+- Your browser and the server each keep a copy and bring each other up to date every minute while the tab is open, and a few seconds after you change something. Emails the server sent, replies it found and status changes (Contacted, Replied) show up in the app; your sequence wording, drafts, leads you add or take out, and unsubscribes reach the server. A stop on either side always wins.
+- Each email is marked as being sent before it's sent, so a run that dies mid-send never sends it twice (it shows as "Send result unknown").
+- Each run lasts under a minute, so with the default 45-second gap a 5-minute schedule sends about one email per run (up to 12 an hour), always within your daily limit and warm-up.
+- The mailbox password is stored encrypted with `BACKGROUND_SECRET`. **Turn off** deletes the server's copy and the stored password. If you change `BACKGROUND_SECRET`, turn it off and on again.
+
 ### Not built yet
 
-Sending and checking replies while the app is closed (needs a database and Vercel Cron), open and click tracking, finding email addresses, and SMS.
+Open and click tracking (left out on purpose), LinkedIn automation (against LinkedIn's rules), a paid contact database, and SMS.
 
 ## Outreach rules
 

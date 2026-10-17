@@ -3,6 +3,9 @@ import { getCategory } from '../data/categories'
 import { DEFAULT_PROFILES } from '../data/profiles'
 import { cleanKeywords } from './validate'
 import type { AuditResult, CategoryId, ClientProfile, Lead, LeadStatus, Pitch, SavedLead, Sender } from './types'
+import { readJson, writeJson } from './localStore'
+
+export { readJson, writeJson }
 
 export const STORAGE_KEYS = {
   saved: 'leadfinder:saved',
@@ -45,22 +48,6 @@ export function setAccessKey(key: string): void {
   }
 }
 
-export function readJson<T>(key: string, fallback: T): T {
-  try {
-    const raw = window.localStorage.getItem(key)
-    return raw ? (JSON.parse(raw) as T) : fallback
-  } catch {
-    return fallback
-  }
-}
-
-export function writeJson(key: string, value: unknown): void {
-  try {
-    window.localStorage.setItem(key, JSON.stringify(value))
-  } catch {
-    // disabled or over quota: keep working in memory
-  }
-}
 
 const STATUSES: LeadStatus[] = ['new', 'contacted', 'replied', 'booked', 'won', 'lost']
 

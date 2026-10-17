@@ -1,6 +1,6 @@
 // When Lead Finder may send: your sending days and hours (in the mailbox's time zone), and the
 // warm-up ramp that keeps a new mailbox's daily volume low and raises it week by week.
-import type { Mailbox } from './types'
+import type { Mailbox } from './types.js'
 
 export const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const
 export const WARMUP_START = 10 // emails a day in the first week

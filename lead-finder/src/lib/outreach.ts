@@ -1,14 +1,14 @@
 // Outreach (cold email): follow-up templates, scheduling and enrollment rules. Pure helpers, no React.
 // Edit the default follow-up wording here.
-import { STATUS_LABELS } from './csv'
-import { emailFooter } from './pitch'
-import { IMAP_HOSTS, loadReplies } from './replies'
-import { browserTimeZone, validTimeZone } from './sendWindow'
-import { readJson } from './storage'
-import { isEmail } from './validate'
+import { STATUS_LABELS } from './csv.js'
+import { emailFooter } from './pitch.js'
+import { IMAP_HOSTS, loadReplies } from './replies.js'
+import { browserTimeZone, validTimeZone } from './sendWindow.js'
+import { readJson } from './localStore.js'
+import { isEmail } from './validate.js'
 import type {
   Campaign, Draft, Enrollment, Mailbox, OutreachEntry, OutreachState, Pitch, SavedLead, Sender, StopReason,
-} from './types'
+} from './types.js'
 
 export const OUTREACH_VARIABLES = ['business', 'sender_name', 'sender_business', 'city', 'booking_link'] as const
 type Vars = Record<(typeof OUTREACH_VARIABLES)[number], string>
@@ -175,7 +175,9 @@ export function enroll(state: OutreachState, s: SavedLead, now: Date): OutreachS
   const check = canEnroll(s, state)
   if (!check.ok) return state
   const e: Enrollment = { leadId: s.lead.id, email: check.email, enrolledAt: now.toISOString(), nextStep: 0, state: 'active', history: [] }
-  return { ...state, enrollments: { ...state.enrollments, [e.leadId]: e } }
+  const removed = { ...state.removed }
+  delete removed[e.leadId]
+  return { ...state, enrollments: { ...state.enrollments, [e.leadId]: e }, ...(Object.keys(removed).length ? { removed } : { removed: undefined }) }
 }
 
 export function enrollAll(
@@ -195,11 +197,11 @@ export function enrollAll(
   return { state: next, added, skipped }
 }
 
-export function unenroll(state: OutreachState, leadId: string): OutreachState {
+export function unenroll(state: OutreachState, leadId: string, now: Date = new Date()): OutreachState {
   if (!state.enrollments[leadId]) return state
   const enrollments = { ...state.enrollments }
   delete enrollments[leadId]
-  return { ...state, enrollments }
+  return { ...state, enrollments, removed: { ...state.removed, [leadId]: now.toISOString() } }
 }
 
 // ---- scheduling ----
@@ -392,8 +394,19 @@ function loadEnrollment(raw: unknown): Enrollment | null {
   }
 }
 
+function loadRemoved(raw: unknown): Record<string, string> | undefined {
+  if (!isObj(raw)) return undefined
+  const out: Record<string, string> = {}
+  for (const [k, v] of Object.entries(raw)) if (isoOrEmpty(v)) out[k] = v as string
+  return Object.keys(out).length ? out : undefined
+}
+
 export function loadOutreach(key: string): OutreachState {
-  const raw = readJson<unknown>(key, null)
+  return parseOutreach(readJson<unknown>(key, null))
+}
+
+// Outreach state from untrusted JSON (localStorage, or a sync request on the server).
+export function parseOutreach(raw: unknown): OutreachState {
   const r = isObj(raw) ? raw : {}
   const enrollments: Record<string, Enrollment> = {}
   if (isObj(r.enrollments)) {
@@ -416,6 +429,7 @@ export function loadOutreach(key: string): OutreachState {
     replies: loadReplies(r.replies),
     ...(isoOrEmpty(r.inboxCheckedAt) ? { inboxCheckedAt: r.inboxCheckedAt as string } : {}),
     ...(isoOrEmpty(r.mailboxStartedAt) ? { mailboxStartedAt: r.mailboxStartedAt as string } : {}),
+    ...(loadRemoved(r.removed) ? { removed: loadRemoved(r.removed) } : {}),
   }
 }
 
@@ -434,7 +448,11 @@ function loadSchedule(r: Record<string, unknown>): Pick<Mailbox, 'sendDays' | 's
 }
 
 export function loadMailbox(key: string): Mailbox {
-  const raw = readJson<unknown>(key, null)
+  return parseMailbox(readJson<unknown>(key, null))
+}
+
+// Mailbox settings from untrusted JSON.
+export function parseMailbox(raw: unknown): Mailbox {
   const r = isObj(raw) ? raw : {}
   const str = (v: unknown) => (typeof v === 'string' ? v : '')
   const known = r.port === 465 || r.port === 587 || r.port === 2525
