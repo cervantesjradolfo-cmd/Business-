@@ -1,11 +1,13 @@
 import { CATEGORIES, getCategory } from '../data/categories.js'
 import { distanceKm, osmUrl } from './geo.js'
+import { parseStartDate } from './heat.js'
 import type { CategoryId, Lead } from './types.js'
 
 export const OVERPASS_MIRRORS = [
   'https://overpass-api.de/api/interpreter',
   'https://overpass.kumi.systems/api/interpreter',
   'https://maps.mail.ru/osm/tools/overpass/api/interpreter',
+  'https://overpass.private.coffee/api/interpreter',
 ] as const
 
 export function buildOverpassQuery(lat: number, lon: number, radiusKm: number, category: CategoryId, limit: number): string {
@@ -120,6 +122,7 @@ export function parseOverpass(json: unknown, center: { lat: number; lon: number 
       city,
       ...pickContact(tags),
       ...pickBrand(tags),
+      ...(parseStartDate(tags.start_date ?? tags.opening_date) ? { startDate: parseStartDate(tags.start_date ?? tags.opening_date) } : {}),
       lat,
       lon,
       distanceKm: Math.round(distanceKm(center, { lat, lon }) * 100) / 100,

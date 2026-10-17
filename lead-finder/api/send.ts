@@ -1,12 +1,13 @@
 // POST /api/send: send one email through the caller's own SMTP mailbox. The password arrives
 // with each request and is never stored or logged.
+import { complianceError, emailProblems } from '../src/lib/compliance.js'
 import { parseSendRequest } from '../src/lib/validate.js'
 import type { SendErrorCode, SendResult } from '../src/lib/types.js'
 import { checkAccess, json } from '../server/http.js'
 import { sendViaSmtp } from '../server/mailer.js'
 
 const STATUS: Record<SendErrorCode, number> = {
-  invalid: 400, host: 400, suppressed: 409, auth: 422, connection: 502, rejected: 502, timeout: 504, access: 401, unavailable: 502,
+  invalid: 400, host: 400, suppressed: 409, compliance: 422, auth: 422, connection: 502, rejected: 502, timeout: 504, access: 401, unavailable: 502,
 }
 
 export async function POST(request: Request): Promise<Response> {
@@ -20,6 +21,10 @@ export async function POST(request: Request): Promise<Response> {
   }
   const parsed = parseSendRequest(body)
   if (!parsed.ok) return json({ ok: false, code: 'invalid', error: parsed.error } satisfies SendResult, 400)
+  // The compliance gate, repeated here so nothing skips it.
+  const { kind = 'followup', to, subject, text } = parsed.value
+  const problems = emailProblems({ kind, to, subject, body: text })
+  if (problems.length) return json({ ok: false, code: 'compliance', error: complianceError(problems) } satisfies SendResult, 422)
   const result = await sendViaSmtp(parsed.value)
   return json(result, result.ok ? 200 : STATUS[result.code])
 }

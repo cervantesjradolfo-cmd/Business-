@@ -11,7 +11,7 @@ export type GapId =
   | 'no_contact_form' | 'no_chat_widget' | 'no_social_links' | 'missing_seo_tags'
   | 'outdated_copyright' | 'slow_site' | 'no_click_to_call' | 'no_phone_listed' | 'no_hours_listed'
 export type SiteGapId = Exclude<GapId, 'no_website' | 'site_unreachable' | 'no_phone_listed' | 'no_hours_listed'>
-export type LeadStatus = 'new' | 'contacted' | 'replied' | 'won' | 'lost'
+export type LeadStatus = 'new' | 'contacted' | 'replied' | 'booked' | 'won' | 'lost'
 
 export type Lead = {
   id: string // `osm:${osmType}/${osmId}` or `demo:N`
@@ -35,6 +35,9 @@ export type Lead = {
   operator?: string // OSM operator tag
   isChain?: boolean // brand tagged, or the same name appears 3+ times in the results
   isDemo?: boolean
+  imported?: boolean // came from a CSV import: no map position or distance
+  startDate?: string // OSM start_date / opening_date (YYYY, YYYY-MM or YYYY-MM-DD)
+  reviews?: Reviews // from Google, when checked
   project?: Project // set for leads from building permits: the lead is the job's general contractor
 }
 
@@ -50,6 +53,8 @@ export type Project = {
   architect?: string
 }
 
+export type Reviews = { rating?: number; count?: number; mapsUrl?: string; checkedAt: string }
+export type AuditSignal = 'hiring' | 'new_opening' | 'placeholder_site'
 export type AuditStatus = 'ok' | 'unreachable' | 'limited' | 'skipped'
 export type AuditResult = {
   id: string
@@ -60,6 +65,8 @@ export type AuditResult = {
   gaps: SiteGapId[] // only filled when status === 'ok'
   detail?: Partial<Record<SiteGapId, string>>
   note?: string
+  emails?: string[] // addresses found on the homepage or contact page, best first
+  signals?: AuditSignal[] // signs it's a good moment to reach out, read from the homepage
   checkedAt: string // ISO
 }
 
@@ -71,9 +78,14 @@ export type ScoredLead = Lead & {
   score: number // 0..100 integer
   services: ServiceId[]
   dealValue: { min: number; max: number }
+  heat: number // 1..5, how good a moment it is to reach out (see heat.ts)
+  heatReasons: { label: string; points: number }[]
 }
 
-export type Sender = { name: string; business: string; email: string; phone: string; address: string; website: string }
+export type Sender = {
+  name: string; business: string; email: string; phone: string; address: string; website: string
+  bookingUrl?: string // a scheduling page (Calendly, Cal.com, Google), offered in answers and follow-ups
+}
 
 // A client profile finds customers for one of your clients and pitches on their behalf.
 // The agency profile (no ClientProfile) is the default: it finds businesses that need your services.
@@ -104,7 +116,11 @@ export type SavedLead = {
   savedAt: string
   updatedAt: string
 }
-export type Filters = { minScore: number; noWebsiteOnly: boolean; hasPhone: boolean; showChains: boolean }
+export type Filters = {
+  minScore: number; noWebsiteOnly: boolean; hasPhone: boolean; showChains: boolean
+  hotOnly?: boolean // only heat 4 and 5
+  sortByHeat?: boolean // hottest first instead of best score first
+}
 
 // API contracts (all JSON; errors are { error: string } with 4xx/5xx)
 export type SearchRequest = { location: string; category: CategoryId; radiusKm: number; limit: number }
@@ -139,7 +155,7 @@ export type OutreachEntry = {
   via: 'smtp' | 'manual'
   messageId?: string // from SMTP, used for In-Reply-To on follow-ups
 }
-export type StopReason = 'replied' | 'won' | 'lost' | 'removed' | 'unsubscribed'
+export type StopReason = 'replied' | 'booked' | 'won' | 'lost' | 'removed' | 'unsubscribed'
 export type Enrollment = {
   leadId: string
   email: string // lower-cased, snapshot at enrollment
@@ -178,6 +194,8 @@ export type OutreachState = {
   sentToday: { day: string; count: number } // day = local YYYY-MM-DD; SMTP sends only
   replies: Record<string, Reply> // by Reply.id
   inboxCheckedAt?: string // ISO, last successful reply check
+  mailboxStartedAt?: string // ISO, first email Lead Finder sent from this profile's mailbox (starts the warm-up)
+  removed?: Record<string, string> // leadId -> ISO when it was taken out of outreach (so a sync doesn't bring it back)
 }
 export type Mailbox = {
   host: string
@@ -190,6 +208,11 @@ export type Mailbox = {
   gapSeconds: number // 20..300, default 45
   dailyCap: number // 1..200, default 30
   imapHost: string // incoming mail server for reply checks (port 993, TLS); '' = replies aren't checked
+  sendDays: number[] // weekdays Lead Finder may send on, 0 = Sunday; default Mon to Fri
+  sendStart: number // first hour it may send, 0..23, default 9
+  sendEnd: number // sends stop at this hour, 1..24, default 17
+  timeZone: string // IANA zone the days and hours are in, default the browser's
+  warmup: boolean // keep a new mailbox's daily volume low and raise it weekly, default on
 }
 export type SendRequest = {
   smtp: { host: string; port: number; secure: boolean; user: string; pass: string }
@@ -199,8 +222,9 @@ export type SendRequest = {
   text: string
   inReplyTo?: string // "<...>" message id of step 0
   suppressed: string[]
+  kind?: 'first' | 'followup' | 'reply' | 'test' // for the compliance check; missing = followup rules
 }
-export type SendErrorCode = 'invalid' | 'suppressed' | 'host' | 'auth' | 'connection' | 'timeout' | 'rejected' | 'access' | 'unavailable'
+export type SendErrorCode = 'invalid' | 'suppressed' | 'compliance' | 'host' | 'auth' | 'connection' | 'timeout' | 'rejected' | 'access' | 'unavailable'
 export type SendResult = { ok: true; messageId: string } | { ok: false; code: SendErrorCode; error: string }
 
 // ---- Replies (reading the outreach mailbox over IMAP) ----
@@ -228,7 +252,7 @@ export type InboxResult = { ok: true; messages: InboxMessage[] } | { ok: false; 
 export type ReplyIntent = 'interested' | 'question' | 'not_now' | 'not_interested' | 'unsubscribe' | 'auto_reply' | 'other'
 export type ReplyRequest = {
   lead: Pick<Lead, 'name' | 'category' | 'city'>
-  sender: Pick<Sender, 'name' | 'business'>
+  sender: Pick<Sender, 'name' | 'business' | 'bookingUrl'>
   services: ServiceId[] // agency profile: the services that were pitched (the server adds their prices)
   offer?: Offer // client profile: what the client does
   ourEmail: { subject: string; body: string } // the last email sent to them, without the footer
@@ -244,5 +268,62 @@ export type Reply = InboxMessage & {
   intent?: ReplyIntent
   summary?: string
   draft?: { body: string; source: 'ai' | 'edited' }
-  handled?: { at: string; how: 'sent' | 'manual' | 'dismissed' | 'auto' }
+  handled?: { at: string; how: 'sent' | 'manual' | 'dismissed' | 'auto' | 'booked' }
 }
+
+// ---- Alerts and CRM sync (set up with environment variables on the server) ----
+export type Integrations = { slack: boolean; webhook: boolean; hubspot: boolean; ghl: boolean; places: boolean }
+export type ReviewsRequest = { name: string; address?: string; city?: string; lat?: number; lon?: number }
+export type AlertRequest = {
+  event: 'reply' | 'booked'
+  lead: { name: string; email?: string; phone?: string; website?: string; city?: string }
+  from?: string // the address that replied
+  intent?: ReplyIntent
+  intentLabel?: string
+  summary?: string
+  text?: string // the reply, without quoted text
+}
+export type CrmLead = {
+  name: string
+  email?: string
+  phone?: string
+  website?: string
+  address?: string
+  city?: string
+  category?: string
+  status: LeadStatus
+}
+export type CrmResult = {
+  hubspot?: { sent: number; skipped: number; error?: string }
+  ghl?: { sent: number; skipped: number; error?: string }
+}
+
+// ---- Background mode: the server sends and checks replies while the app is closed ----
+// What the server needs to know about a lead in outreach (sent by the browser with every sync).
+export type BackgroundLead = {
+  id: string
+  name: string
+  city?: string
+  category: string
+  status: LeadStatus
+  updatedAt: string // ISO, when you last changed the saved lead
+  pitch: Pitch // the first email as it would be sent
+  services: ServiceId[] // what was pitched (for AI reply drafts)
+}
+export type StatusEvent = { leadId: string; status: LeadStatus; at: string } // a status the server set
+export type BackgroundMailbox = Omit<Mailbox, 'pass'>
+export type SyncRequest = {
+  workspace: string // 'agency' or a client profile id
+  outreach: OutreachState
+  leads: Record<string, BackgroundLead>
+  sender: Sender
+  offer?: Offer
+  mailbox: Mailbox // with the password: stored encrypted on the server
+}
+export type BackgroundStatus = {
+  available: boolean // the server has a database and a secret set up
+  enabled: boolean // this profile runs in the background
+  lastRunAt?: string
+  lastRunNote?: string
+}
+export type SyncResponse = BackgroundStatus & { outreach?: OutreachState; events: StatusEvent[] }

@@ -58,7 +58,7 @@ describe('first run and search flow', () => {
     render(<App />)
     await user.type(screen.getByLabelText('Location'), '   ')
     await user.click(screen.getByRole('button', { name: 'Search' }))
-    expect(calls.length).toBe(0)
+    expect(calls.filter((c) => !/\/api\/(integrations|background)$/.test(c.path)).length).toBe(0)
   })
 
   it('lists sorted results, audits only leads with a website, and shows the count', async () => {

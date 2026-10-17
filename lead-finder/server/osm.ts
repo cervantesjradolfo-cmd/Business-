@@ -45,26 +45,65 @@ export async function geocode(location: string, deps?: Deps): Promise<Center | n
   return found
 }
 
-export async function overpassSearch(query: string): Promise<{ json: unknown; mirror: string } | null> {
-  for (const mirror of OVERPASS_MIRRORS) {
-    try {
-      const res = await fetchWithTimeout(mirror, {
-        method: 'POST',
-        headers: { ...headers(), 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: `data=${encodeURIComponent(query)}`,
-        timeoutMs: 15000,
-      })
-      if (!res.ok) continue
-      const body = (await res.json()) as { elements?: unknown[]; remark?: string } | null
-      if (!body || typeof body !== 'object') continue
-      const count = Array.isArray(body.elements) ? body.elements.length : 0
-      if (body.remark && count === 0) continue
-      return { json: body, mirror }
-    } catch {
-      // try the next mirror
-    }
+const MIRROR_TIMEOUT_MS = 25_000 // a busy mirror can take 20 s to answer
+const OVERPASS_BUDGET_MS = 30_000 // all mirrors together, leaving time for the fallback search within Vercel's 60 s
+const STAGGER_MS = 4_000 // ask the next mirror if the current one hasn't answered by then
+
+async function askMirror(mirror: string, query: string, signal: AbortSignal): Promise<unknown | null> {
+  try {
+    const res = await fetch(mirror, {
+      method: 'POST',
+      headers: { ...headers(), 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: `data=${encodeURIComponent(query)}`,
+      signal: AbortSignal.any([signal, AbortSignal.timeout(MIRROR_TIMEOUT_MS)]),
+    })
+    if (!res.ok) return null
+    const body = (await res.json()) as { elements?: unknown[]; remark?: string } | null
+    if (!body || typeof body !== 'object') return null
+    const count = Array.isArray(body.elements) ? body.elements.length : 0
+    if (body.remark && count === 0) return null
+    return body
+  } catch {
+    return null
   }
-  return null
+}
+
+// Asks the mirrors in order, without waiting for a slow one: the next mirror is asked as soon as the
+// current one fails, or after a few seconds without an answer. The first good answer wins and the
+// other requests are cancelled.
+export async function overpassSearch(
+  query: string, staggerMs = STAGGER_MS, budgetMs = OVERPASS_BUDGET_MS,
+): Promise<{ json: unknown; mirror: string } | null> {
+  const cancel = new AbortController()
+  return new Promise((resolve) => {
+    const deadline = setTimeout(() => finish(null), budgetMs)
+    let next = 0
+    let running = 0
+    let done = false
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const finish = (result: { json: unknown; mirror: string } | null) => {
+      if (done) return
+      done = true
+      clearTimeout(timer)
+      clearTimeout(deadline)
+      cancel.abort()
+      resolve(result)
+    }
+    const launch = () => {
+      clearTimeout(timer)
+      if (done || next >= OVERPASS_MIRRORS.length) return
+      const mirror = OVERPASS_MIRRORS[next++]
+      running++
+      timer = setTimeout(launch, staggerMs)
+      void askMirror(mirror, query, cancel.signal).then((json) => {
+        running--
+        if (json) return finish({ json, mirror })
+        if (next < OVERPASS_MIRRORS.length) launch()
+        else if (running === 0) finish(null)
+      })
+    }
+    launch()
+  })
 }
 
 export async function nominatimSearch(term: string, location: string, deps?: Deps): Promise<unknown> {

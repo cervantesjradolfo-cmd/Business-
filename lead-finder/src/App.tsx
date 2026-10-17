@@ -2,19 +2,23 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { SearchX, Target, Bookmark } from 'lucide-react'
 import clsx from 'clsx'
 import { DEMO_AUDITS, DEMO_LEADS } from './data/demo'
-import { ApiUnavailableError, auditLeads, fetchPitch, searchLeads, searchProjects } from './lib/api'
+import { ApiUnavailableError, auditLeads, fetchIntegrations, fetchPitch, fetchReviews, searchLeads, searchProjects, sendAlert } from './lib/api'
+import { sendToCrm } from './lib/crm'
+import { INTENT_LABELS } from './lib/replies'
 import { csvFilename, leadsToCsv } from './lib/csv'
-import { applyFilters, sortByContact, sortLeads } from './lib/filters'
+import { applyFilters, sortByContact, sortByHeat, sortLeads } from './lib/filters'
 import { toLead } from './lib/format'
-import { canEnroll, dueSteps, enroll, enrollmentLabel, outreachEmailFor, suppress, syncWithSaved } from './lib/outreach'
+import type { ImportedRow } from './lib/csvImport'
+import { canEnroll, dueSteps, enroll, enrollmentLabel, loadOutreach, outreachEmailFor, suppress, syncWithSaved } from './lib/outreach'
 import { mailboxKey, outreachKey, useMailbox, useOutreach } from './lib/outreachStore'
 import { buildTemplatePitch, pitchRequestFor } from './lib/pitch'
 import { useOutreachRunner } from './lib/useOutreachRunner'
 import { useReplies } from './lib/useReplies'
+import { useBackground } from './lib/useBackground'
 import { isEmail } from './lib/validate'
 import { scoreLead } from './lib/scoring'
-import { EMPTY_SENDER, savedKey, useProfiles, useSavedLeads, useSender } from './lib/storage'
-import type { AuditResult, ClientProfile, Filters as FiltersState, Lead, Pitch, ProjectsRequest, SavedLead, ScoredLead, SearchRequest, Sender } from './lib/types'
+import { EMPTY_SENDER, savedKey, useProfiles, useSavedLeads, useSender, writeJson } from './lib/storage'
+import type { AuditResult, ClientProfile, Filters as FiltersState, Integrations, Lead, LeadStatus, Pitch, ProjectsRequest, Reply, SavedLead, ScoredLead, SearchRequest, Sender } from './lib/types'
 import ApiNotice from './components/ApiNotice'
 import DemoBanner from './components/DemoBanner'
 import EmptyState from './components/EmptyState'
@@ -102,7 +106,7 @@ function Workspace({ profile, sender, header, settingsOpen, onOpenSettings }: Wo
   const [pitches, setPitches] = useState<Record<string, Pitch>>({})
   const [pitchLoading, setPitchLoading] = useState(false)
 
-  const { saved, save, remove, setStatus, setNotes, setPitch, setOutreachEmail } = useSavedLeads(savedKey(profile?.id))
+  const { saved, save, saveMany, remove, setStatus, setNotes, setPitch, setOutreachEmail } = useSavedLeads(savedKey(profile?.id))
   const outreachStoreKey = outreachKey(profile?.id)
   const outreach = useOutreach(outreachStoreKey)
   const [mailbox, setMailbox] = useMailbox(mailboxKey(profile?.id))
@@ -111,7 +115,11 @@ function Workspace({ profile, sender, header, settingsOpen, onOpenSettings }: Wo
   const requested = useRef<Set<string>>(new Set())
 
   // ---- lists ----
-  const resultScored = useMemo(() => leads.map((l) => scoreLead(l, audits[l.id], pending.has(l.id))), [leads, audits, pending])
+  // A result you checked reviews for (and so saved) shows them too.
+  const resultScored = useMemo(() => leads.map((l) => {
+    const reviews = saved[l.id]?.lead.reviews
+    return scoreLead(reviews ? { ...l, reviews } : l, audits[l.id], pending.has(l.id))
+  }), [leads, audits, pending, saved])
   const savedScored = useMemo(() => Object.values(saved).map((s) => scoreLead(s.lead, s.audit)), [saved])
   const allScored = tab === 'results' ? resultScored : savedScored // the Outreach tab lists saved leads too
   // Chains are hidden by default in results; leads the user saved are always listed.
@@ -119,7 +127,8 @@ function Workspace({ profile, sender, header, settingsOpen, onOpenSettings }: Wo
   const visible = useMemo(() => {
     const f = { ...filters, ...(tab === 'saved' ? { showChains: true } : {}), ...(client ? { minScore: 0, noWebsiteOnly: false } : {}) }
     const list = applyFilters(allScored, f)
-    return client ? sortByContact(list) : sortLeads(list)
+    const sorted = client ? sortByContact(list) : sortLeads(list)
+    return filters.sortByHeat ? sortByHeat(sorted) : sorted
   }, [allScored, filters, tab, client])
   const chainCount = useMemo(() => allScored.filter((l) => l.isChain).length, [allScored])
   const selected = selectedId ? allScored.find((l) => l.id === selectedId) : undefined
@@ -146,8 +155,8 @@ function Workspace({ profile, sender, header, settingsOpen, onOpenSettings }: Wo
 
   // Checks the websites of new leads in batches. Returns false if the run was stopped meanwhile.
   const auditNew = useCallback(async (found: Lead[], signal: AbortSignal, live: () => boolean): Promise<boolean> => {
-    // Client profiles don't pitch websites, so there is nothing to audit (project leads have no website).
-    const withSite = client ? [] : found.filter((l) => l.website?.trim())
+    // Every website is checked: for your agency it shows the gaps, and for every profile it finds email addresses.
+    const withSite = found.filter((l) => l.website?.trim())
     setPending(new Set(withSite.map((l) => l.id)))
     setProgress({ done: 0, total: withSite.length })
     if (withSite.length === 0) return true
@@ -167,7 +176,7 @@ function Workspace({ profile, sender, header, settingsOpen, onOpenSettings }: Wo
       setProgress({ done, total: withSite.length })
     }
     return true
-  }, [client])
+  }, [])
 
   const failRun = useCallback((e: unknown) => {
     if (e instanceof ApiUnavailableError) setPhase('unavailable')
@@ -314,12 +323,57 @@ function Workspace({ profile, sender, header, settingsOpen, onOpenSettings }: Wo
   const runner = useOutreachRunner({
     outreach, outreachKey: outreachStoreKey, saved, mailbox, sender, profile, pitchFor: pitchForSaved, markContacted,
   })
+  // Alerts and CRM sync, when set up on the server.
+  const [integrations, setIntegrations] = useState<Integrations>({ slack: false, webhook: false, hubspot: false, ghl: false, places: false })
+  useEffect(() => {
+    const ctrl = new AbortController()
+    void fetchIntegrations(ctrl.signal).then((i) => { if (!ctrl.signal.aborted) setIntegrations(i) })
+    return () => ctrl.abort()
+  }, [])
+  const alerts = integrations.slack || integrations.webhook
+  const crm = integrations.hubspot || integrations.ghl
+  const leadInfo = (s: SavedLead) => ({
+    name: s.lead.name,
+    ...(outreachEmailFor(s) ? { email: outreachEmailFor(s) } : {}),
+    ...(s.lead.phone ? { phone: s.lead.phone } : {}),
+    ...(s.lead.website ? { website: s.lead.website } : {}),
+    ...(s.lead.city ? { city: s.lead.city } : {}),
+  })
+  const syncLead = useCallback((s: SavedLead, status: LeadStatus) => {
+    if (crm) void sendToCrm([{ ...s, status }]).catch(() => {})
+  }, [crm])
+  const onNewReply = useCallback((r: Reply, s: SavedLead) => {
+    if (alerts) {
+      void sendAlert({
+        event: 'reply', lead: leadInfo(s), from: r.from, ...(r.intent ? { intent: r.intent, intentLabel: INTENT_LABELS[r.intent] } : {}),
+        ...(r.summary ? { summary: r.summary } : {}), text: r.text,
+      })
+    }
+    syncLead(s, 'replied')
+  }, [alerts, syncLead])
+  // Status changes from the lead panel or a reply: saved, then mirrored to the CRM; a booking also alerts.
+  const changeStatus = useCallback((s: SavedLead, status: LeadStatus) => {
+    setStatus(s.lead, s.audit, status)
+    if (status !== s.status) syncLead(s, status)
+    if (status === 'booked' && s.status !== 'booked' && alerts) void sendAlert({ event: 'booked', lead: leadInfo(s) })
+  }, [setStatus, syncLead, alerts])
   const markReplied = useCallback((s: SavedLead) => {
     if (s.status === 'new' || s.status === 'contacted') setStatus(s.lead, s.audit, 'replied')
   }, [setStatus])
   const replies = useReplies({
-    outreach, outreachKey: outreachStoreKey, saved, mailbox, sender, profile, pitchFor: pitchForSaved, markReplied, auto: runner.status.auto,
+    outreach, outreachKey: outreachStoreKey, saved, mailbox, sender, profile, pitchFor: pitchForSaved, markReplied, auto: runner.status.auto, onNewReply,
   })
+  const background = useBackground({
+    workspace: profile?.id ?? 'agency', outreach, outreachKey: outreachStoreKey, saved, mailbox, sender, profile, pitchFor: pitchForSaved, applyStatus: changeStatus,
+  })
+  const { setAuto, stop: stopRunner } = runner
+  const backgroundControls = useMemo(() => ({
+    view: background.view,
+    // The open tab stops sending before the server takes over, so the two never send at once.
+    turnOn: () => { setAuto(false); stopRunner(); void background.turnOn() },
+    turnOff: () => void background.turnOff(),
+    runNow: () => void background.runNow(),
+  }), [background, setAuto, stopRunner])
   useEffect(() => {
     const id = setInterval(() => setTick((t) => t + 1), 60_000)
     return () => clearInterval(id)
@@ -332,6 +386,42 @@ function Workspace({ profile, sender, header, settingsOpen, onOpenSettings }: Wo
   }, [saved, campaign, suppressed, updateOutreach])
   const now = new Date()
   const outreachDue = dueSteps(outreach.state, saved, now).length
+
+  // CSV import: saves the rows, adds the ones with an email to outreach if asked, then checks their websites
+  // in the background (which finds more emails and, for your agency, the gaps).
+  const importLeads = useCallback((rows: ImportedRow[], addToOutreach: boolean): string => {
+    const { saved: after, added, updated } = saveMany(rows)
+    let enrolled = 0
+    if (addToOutreach) {
+      const at = new Date()
+      let next = loadOutreach(outreachStoreKey)
+      for (const r of rows) {
+        const s = after[r.lead.id]
+        const n = s ? enroll(next, s, at) : next
+        if (n !== next) enrolled++
+        next = n
+      }
+      if (enrolled) {
+        writeJson(outreachStoreKey, next)
+        updateOutreach(() => next)
+      }
+    }
+    const withSite = rows.map((r) => r.lead).filter((l) => l.website?.trim())
+    void (async () => {
+      for (let i = 0; i < withSite.length; i += 10) {
+        const batch = withSite.slice(i, i + 10)
+        const results = await auditLeads(batch.map((l) => ({ id: l.id, website: l.website! })))
+        for (const res of results) {
+          const lead = batch.find((l) => l.id === res.id)
+          if (lead) save(lead, res)
+        }
+      }
+    })()
+    const parts = [`Imported ${added} new ${added === 1 ? 'lead' : 'leads'}${updated ? `, updated ${updated}` : ''}`]
+    if (addToOutreach) parts.push(`added ${enrolled} to outreach`)
+    if (withSite.length) parts.push(`checking ${withSite.length} websites for emails`)
+    return `${parts.join(', ')}.`
+  }, [saveMany, save, outreachStoreKey, updateOutreach])
 
   async function regenerate() {
     if (!selected) return
@@ -419,7 +509,8 @@ function Workspace({ profile, sender, header, settingsOpen, onOpenSettings }: Wo
             state={outreach.state} update={outreach.update} saved={saved} mailbox={mailbox} onMailbox={setMailbox}
             sender={sender} profile={profile} now={now} pitchFor={pitchForSaved} markContacted={markContacted}
             status={runner.status} onRun={runner.runNow} onStop={runner.stop} onAuto={runner.setAuto} onTest={runner.sendTest} replies={replies}
-            onOpenLead={(id) => { setTab('saved'); setSelectedId(id) }} onOpenSettings={onOpenSettings}
+            onOpenLead={(id) => { setTab('saved'); setSelectedId(id) }} onOpenSettings={onOpenSettings} onImport={importLeads}
+            onBooked={(s) => changeStatus(s, 'booked')} integrations={integrations} background={backgroundControls}
           />
         )}
 
@@ -447,11 +538,18 @@ function Workspace({ profile, sender, header, settingsOpen, onOpenSettings }: Wo
                 profile={profile}
                 onClose={() => setSelectedId(undefined)}
                 onToggleSave={() => (saved[selected.id] ? remove(selected.id) : save(toLead(selected), selected.audit))}
-                onStatus={(s) => setStatus(toLead(selected), selected.audit, s)}
+                onStatus={(s) => (saved[selected.id] ? changeStatus(saved[selected.id], s) : setStatus(toLead(selected), selected.audit, s))}
                 onNotes={(n) => setNotes(toLead(selected), selected.audit, n)}
                 onRegenerate={regenerate}
                 onOpenSettings={onOpenSettings}
                 {...outreachProps}
+                {...(integrations.places && !selected.isDemo ? {
+                  onCheckReviews: async () => {
+                    const { name, address, city, lat, lon } = selected
+                    const reviews = await fetchReviews({ name, address, ...(city ? { city } : {}), lat, lon })
+                    save({ ...toLead(selected), reviews }, selected.audit)
+                  },
+                } : {})}
               />
             ) : (
               'Select a lead to see details'

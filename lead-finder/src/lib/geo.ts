@@ -9,8 +9,11 @@ export function distanceKm(a: { lat: number; lon: number }, b: { lat: number; lo
   return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)))
 }
 
-export function googleMapsUrl(lead: Pick<Lead, 'name' | 'address' | 'lat' | 'lon'>): string {
-  const query = lead.address ? `${lead.name}, ${lead.address}` : `${lead.lat},${lead.lon}`
+export function googleMapsUrl(lead: Pick<Lead, 'name' | 'address' | 'lat' | 'lon'> & Partial<Pick<Lead, 'city' | 'imported'>>): string {
+  // Imported leads have no map position: search by name and whatever address they came with.
+  const query = lead.address ? `${lead.name}, ${lead.address}`
+    : lead.imported ? [lead.name, lead.city].filter(Boolean).join(', ')
+      : `${lead.lat},${lead.lon}`
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`
 }
 

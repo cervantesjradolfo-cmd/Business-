@@ -24,6 +24,14 @@ export default function Filters({ filters, onChange, shown, total, chainCount = 
         </>
       )}
       <label className="flex items-center gap-2">
+        <input type="checkbox" checked={!!filters.hotOnly} onChange={(e) => onChange({ ...filters, hotOnly: e.target.checked })} className="h-4 w-4 accent-brand" />
+        Heat 4+ only
+      </label>
+      <label className="flex items-center gap-2">
+        <input type="checkbox" checked={!!filters.sortByHeat} onChange={(e) => onChange({ ...filters, sortByHeat: e.target.checked })} className="h-4 w-4 accent-brand" />
+        Hottest first
+      </label>
+      <label className="flex items-center gap-2">
         <input type="checkbox" checked={filters.hasPhone} onChange={(e) => onChange({ ...filters, hasPhone: e.target.checked })} className="h-4 w-4 accent-brand" />
         Has phone
       </label>

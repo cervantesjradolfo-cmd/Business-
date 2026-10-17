@@ -5,7 +5,7 @@ Lead Finder finds local businesses that are missing the things you build (a webs
 ## What it does
 
 1. You enter a town (or ZIP or address), pick a category and a radius.
-2. It lists businesses from OpenStreetMap, then checks each business's website homepage for gaps (no website, not mobile-friendly, no online booking, no chat, outdated, slow and more).
+2. It lists businesses from OpenStreetMap, then checks each business's website homepage for gaps (no website, not mobile-friendly, no online booking, no chat, outdated, slow and more). The same check looks for the business's email address on the homepage, or on its contact or about page when the homepage has none.
 3. Each lead gets an opportunity score from 0 to 100 (no website scores highest), a list of gaps in plain words, recommended services and an estimated deal value.
 4. For each lead you get a cold email, a text message and a phone opener. Templates are the default. With an Anthropic API key they are written by Claude.
 5. You can set a status (New, Contacted, Replied, Won, Lost), add notes, save leads across searches and export to CSV.
@@ -50,6 +50,27 @@ signed-out request is refused. It needs these environment variables:
 
 Re-run it after code changes to redeploy. Enter the access key in the app under "Your details".
 
+## Heat: who to contact now
+
+The score says how much a business needs what you sell. **Heat** (1 to 5, shown as "Heat 4" on a card) says whether something is happening right now that makes it a good moment to reach out. The lead panel's **Why now** section lists the reasons:
+
+| Signal | Points |
+|---|---|
+| Building permit issued in the last 14 days (Active projects) | 3 |
+| Permit issued 15 to 45 days ago | 2 |
+| Reported job cost $250,000 or more | 1 |
+| Their website says they're hiring | 2 |
+| Their website says they've just opened or open soon | 2 |
+| Their website is a "coming soon" or placeholder page | 2 |
+| Opened in the last year (OpenStreetMap `start_date` or `opening_date`) | 2 |
+| Website is down or broken | 2 |
+| Google rating under 4.0 from 5 or more reviews | 2 |
+| Fewer than 15 Google reviews | 1 |
+
+Heat is 1 plus the points, up to 5. Use **Heat 4+ only** and **Hottest first** in the filters to work the hottest leads first.
+
+**Google reviews (optional):** set `GOOGLE_PLACES_API_KEY` (a Google Cloud key with the Places API (New) enabled) and the lead panel gets **Check Google reviews**. It looks up that one business's rating and review count, saves the lead with them and updates its heat. Google bills each lookup, so it only runs when you press the button.
+
 ## Search many places at once
 
 Business searches have **One place** and **Many places**. With **Many places**, type or paste places one per line (cities, ZIP codes or addresses), or use **Fill with** to load the 50 largest US cities or a state's biggest cities (`src/data/places.ts`). The app searches each place in turn with the same category, radius and **Max per place**, adds new leads to one list (a business found from two places is listed once) and checks their websites as it goes. A place that can't be searched is skipped and named at the end. **Stop** ends the run and keeps what was found. Each place takes about 5 to 30 seconds, so keep the tab open for long lists (up to 100 places).
@@ -59,7 +80,7 @@ Business searches have **One place** and **Many places**. With **Many places**, 
 Lead Finder can also find customers for your clients. Pick a profile in **Finding leads for** at the top:
 
 - **My agency** (the default) finds businesses that are missing websites, booking and so on, and pitches your services.
-- **A client profile** (for example **Asher Construction**, which does drywall, metal framing and acoustic ceilings) searches the kinds of businesses that hire that client, such as general contractors and builders, property managers and architects. The pitch is an introduction written as the client. Website checks, scores and deal values are not used. Leads are ranked by how many ways there are to reach them (phone, email, website), then by distance.
+- **A client profile** (for example **Asher Construction**, which does drywall, metal framing and acoustic ceilings) searches the kinds of businesses that hire that client, such as general contractors and builders, property managers and architects. The pitch is an introduction written as the client. Scores, website gaps and deal values are not used, but websites are still checked to find email addresses. Leads are ranked by how many ways there are to reach them (phone, email, website), then by distance.
 
 ### Active projects (Chicago building permits)
 
@@ -77,6 +98,26 @@ Each profile has its own signature details and its own saved leads. Press **Prof
 
 Only put true facts in **Selling points**: they go into the pitches as written, and the AI is told not to invent anything beyond them.
 
+## Alerts and CRM sync
+
+Set these in Vercel (Settings, Environment Variables) and redeploy. The Outreach tab's **Alerts and CRM** section shows what's connected.
+
+| Variable | What it does |
+|---|---|
+| `SLACK_WEBHOOK_URL` | A Slack incoming webhook (`https://hooks.slack.com/...`). Posts a message when a lead replies (with the AI's label and summary) or books. |
+| `ALERT_WEBHOOK_URL` | Any `https://` webhook (Zapier, Make, n8n). Gets the same alerts as JSON: `event` (`reply` or `booked`), `lead`, `from`, `intent`, `summary`, `text`. |
+| `HUBSPOT_TOKEN` | A HubSpot private app token with the CRM contacts write scope. Leads with an email become contacts (company, website, phone, city, address) with a lead status: Contacted is Attempted to contact, Replied is Connected, Meeting booked and Won are Open deal, Lost is Unqualified. |
+| `GHL_TOKEN` and `GHL_LOCATION_ID` | A GoHighLevel private integration token and the sub-account (location) id. Leads with an email or phone become contacts tagged `lead-finder` and `lead-finder-<status>`. |
+
+When they're set:
+
+- a real reply sends an alert and updates that lead in the CRM (opt-outs and auto-replies don't);
+- **Meeting booked** sends a booking alert and updates the CRM;
+- changing a saved lead's status in the lead panel updates the CRM;
+- **Send all saved leads to CRM** sends everything you've saved, 25 at a time.
+
+The tokens and webhook addresses stay on the server (`GET /api/integrations` only says yes or no for each), and the API can't be pointed anywhere else.
+
 ## Environment variables
 
 | Name | What it does |
@@ -86,6 +127,9 @@ Only put true facts in **Selling points**: they go into the pitches as written, 
 | `APP_ACCESS_KEY` | Optional but recommended for any public deploy. When set, every API call must send the same value in an `x-access-key` header, otherwise it gets a 401. Enter the key in the app under **Your details**. Leave it unset for local use. |
 | `SOCRATA_APP_TOKEN` | Optional. An app token for the Chicago data portal, used by Active projects. Only needed if permit searches get throttled. |
 | `VITE_API_BASE` | Optional. Front-end only. Points the app at an API on another origin. |
+| `SLACK_WEBHOOK_URL`, `ALERT_WEBHOOK_URL`, `HUBSPOT_TOKEN`, `GHL_TOKEN`, `GHL_LOCATION_ID` | Optional. Alerts and CRM sync, see "Alerts and CRM sync". |
+| `GOOGLE_PLACES_API_KEY` | Optional. Turns on **Check Google reviews** in the lead panel, see "Heat". |
+| `KV_REST_API_URL`, `KV_REST_API_TOKEN`, `BACKGROUND_SECRET`, `CRON_SECRET` | Optional. **Run while the app is closed**, see that section. |
 
 ## Protect your deployment
 
@@ -97,10 +141,10 @@ The API endpoints are open to anyone who knows the URL: `/api/pitch` spends your
 ## Data sources and their limits
 
 - **Nominatim (OpenStreetMap geocoder).** At most 1 request per second (the app enforces this), an identifying User-Agent is required, and no bulk geocoding. Attribution is required: "© OpenStreetMap contributors" (ODbL). The app shows it in the footer. If you export or republish the data, keep the attribution.
-- **Overpass API (OpenStreetMap business data).** Public instances are fair-use (around 10,000 queries a day) and can be slow or busy, so keep queries small. The app tries overpass-api.de, overpass.kumi.systems and maps.mail.ru in that order. If all fail, it falls back to a simpler Nominatim search (using OSM "special phrase" terms from `nominatimTerms` in `src/data/categories.ts`, one request per term) and says that results may be incomplete. Law offices and party & event rentals have no working Nominatim phrase, so those two categories give a "servers are busy" error instead when Overpass is down. Drywall, ceilings & framing has no phrase either, but it also searches business names (`nameSearchTerms` in `src/data/categories.ts`) with Nominatim inside the search area on every search, because many drywall firms are only tagged as a generic company. Those name results are used on their own when Overpass is down.
+- **Overpass API (OpenStreetMap business data).** Public instances are fair-use (around 10,000 queries a day) and can be slow or busy, so keep queries small. The app asks overpass-api.de, overpass.kumi.systems, maps.mail.ru and overpass.private.coffee in that order, moving on to the next one as soon as one fails or after 4 seconds without an answer (each gets up to 25 seconds), and uses the first good answer. If all fail, it falls back to a simpler Nominatim search (using OSM "special phrase" terms from `nominatimTerms` in `src/data/categories.ts`, one request per term) and says that results may be incomplete. Law offices and party & event rentals have no working Nominatim phrase, so those two categories give a "servers are busy" error instead when Overpass is down. Drywall, ceilings & framing has no phrase either, but it also searches business names (`nameSearchTerms` in `src/data/categories.ts`) with Nominatim inside the search area on every search, because many drywall firms are only tagged as a generic company. Those name results are used on their own when Overpass is down.
 - **OpenStreetMap coverage varies.** Some businesses have no phone, hours or website listed. A missing website in the map data does not always mean the business has none, so check before you pitch.
 - **Chains and franchises** (businesses with a `brand` tag, or the same name 3+ times in the results) are hidden by default so they do not crowd the top of the list. Tick "Show chains" to see them.
-- **Website audits** fetch only the homepage (8 second timeout, 4 at a time). The server connects only to public addresses it has checked itself, and re-checks every redirect. Some sites block automated checks. Those show as "Website not checked" or "review it by hand".
+- **Website audits** fetch the homepage, plus up to two contact or about pages on the same site when the homepage shows no email address (8 seconds in total, 4 sites at a time). Found addresses skip error-tracker, site-builder and placeholder addresses; the business's own domain and inboxes like info@ and contact@ come first. Check a found address before you rely on it. The server connects only to public addresses it has checked itself, and re-checks every redirect. Some sites block automated checks. Those show as "Website not checked" or "review it by hand".
 - **AI pitches** cost a fraction of a cent per lead.
 
 ## Where to edit what
@@ -124,7 +168,7 @@ The **Outreach** tab sends your pitch emails and follow-ups from your own mailbo
 
 ### How it works
 
-1. Save a lead, open it, type an address under **Email for outreach** (OpenStreetMap leads with an email are prefilled) and press **Add to outreach**. Or use **Add all saved leads with an email** on the Outreach tab.
+1. Save a lead, open it, type an address under **Email for outreach** (prefilled with the OpenStreetMap email, or else the one found on their website) and press **Add to outreach**. Or use **Add all saved leads with an email** on the Outreach tab.
 2. The sequence is step 1 (the lead's pitch email from the Pitch panel, sent as written) and up to 2 follow-ups. Edit the follow-up wording and delays under **Sequence**. Follow-ups are sent as replies to the first email.
 3. **Due now** lists every email that is ready. **Send due emails** sends them one by one, waiting the number of seconds you set between emails and stopping at your daily limit. The rest stay due until tomorrow.
 4. **Auto-send while this tab is open** checks every minute and sends what is due. Nothing is sent while the app is closed.
@@ -142,6 +186,15 @@ Every queued email has a **Preview** link (on its Due now row, or under In outre
 
 If the app is closed while an email is being sent, that lead shows "Send result unknown, check your Sent folder". Press **Mark as sent** or **Retry**. It is never sent twice automatically.
 
+### Import leads from a CSV
+
+On the Outreach tab, **Import leads from a CSV** takes a list from a spreadsheet, a CRM export or a lead database (comma, semicolon or tab separated, up to 2,000 rows and 5 MB). Lead Finder guesses which column is the business name, email, website, phone, address, city, category and notes; check the guesses, then press **Import**.
+
+- Each row becomes a saved lead (rows without a business name are skipped). Importing the same file again updates those leads instead of adding copies.
+- **Add the ones with an email to outreach now** puts them straight into the sequence (unsubscribed addresses are still skipped).
+- Their websites are checked afterwards, which can find emails the file didn't have. Use **Add all saved leads with an email** to add those.
+- Imported leads have no map position, so they show "Imported" instead of a distance.
+
 ### Replies
 
 The **Replies** section at the top of the Outreach tab reads your mailbox for answers to your outreach emails (`POST /api/inbox`, over IMAP on port 993), using the same username and app password as sending.
@@ -151,6 +204,7 @@ The **Replies** section at the top of the Outreach tab reads your mailbox for an
 - Out-of-office and other automatic replies are skipped and don't stop the sequence.
 - Every email says to reply "no thanks" to stop, so a "no thanks", "not interested" or unsubscribe reply adds the address to **Unsubscribed addresses** right away, even without AI. It needs no answer.
 - With `ANTHROPIC_API_KEY`, the AI sorts each reply (Interested, Has a question, Not now, Not interested, Unsubscribe, Auto-reply, Other), says in one line what they want, and drafts your answer (`POST /api/reply`). It uses only your services and the price ranges in `src/data/pricing.ts` (or a client profile's offer and selling points), and is told never to invent anything else.
+- **Booking:** add your scheduling page (Calendly, Cal.com, Google Calendar) as **Booking link** under Your details. The AI offers it as the next step to interested replies, **Add booking link** puts it into any answer, and follow-ups can use `{{booking_link}}`. When they book, press **Meeting booked**: the lead becomes **Meeting booked** and its follow-ups stop.
 - **Nothing is sent without you.** Read and edit the draft, then press **Send answer**. It goes from your mailbox as a reply in the same thread, with your signature, the opt-out line and their message quoted. **Open in email app**, **Mark as answered** and **No answer needed** are there too.
 - Without AI, write the answer yourself in the same box.
 - Only your inbox is read, only messages from the last 45 days (and since your first outreach email), and at most the newest 400 of those. The password is used for that one check and never stored or logged.
@@ -165,9 +219,27 @@ Open the **Mailbox** section on the Outreach tab, pick a provider, enter your us
 
 The SMTP password is kept only in this browser. It is sent to your own server with each email, used for that one send, and never stored or logged. The server refuses private and local addresses as mail servers.
 
+### Sending hours and warm-up
+
+Under **Mailbox**, **When to send** sets the days and hours Lead Finder may send (Monday to Friday, 9:00 to 17:00 by default, in your browser's time zone when you save). Outside them, due emails wait and the Outreach tab says when sending starts again. Answers to replies, and emails you open in your email app, aren't limited.
+
+**Warm up a new mailbox** (on by default) sends at most 10 emails a day in the mailbox's first week, then 5 more a day each week until your daily limit. The warm-up starts with the first email Lead Finder sends from that profile. Turn it off for a mailbox that has been sending for a while.
+
+### Compliance check
+
+Every email is checked right before it goes out, whether it's sent by Lead Finder, opened in your email app or sent as an answer to a reply. An email that fails isn't sent; the reason shows on its row and in its preview, which also says when it passes. It checks that:
+
+- your name, business and postal address are filled in, and the address is in the email;
+- the opt-out line is in the email;
+- a first email doesn't start its subject with "Re:" or "Fwd:", or say you've already spoken ("as discussed", "following up on our call" and similar);
+- nothing is left over to fill in, such as [Your name] or {{business}};
+- the address hasn't unsubscribed.
+
+The server (`/api/send`) repeats the checks it can make from the email alone, so nothing skips them. The rules are in `src/lib/compliance.ts`.
+
 ### Send safely
 
-- Start small, around 20 emails a day per mailbox, and raise it slowly over a few weeks. Keep the gap between emails at 45 seconds or more.
+- Start small and raise the volume slowly over a few weeks (the warm-up does this for you). Keep the gap between emails at 45 seconds or more.
 - Use a separate domain and mailbox for cold email, so a spam complaint cannot hurt your main address.
 - Use your real name and address as the sender, and keep your postal address in the signature (the app adds your signature and an opt-out line to every email).
 - Honour opt-outs within 10 business days. Press **Unsubscribed** when someone asks, and the address is never emailed again from that profile.
@@ -175,9 +247,27 @@ The SMTP password is kept only in this browser. It is sent to your own server wi
 
 This is not legal advice.
 
+### Run while the app is closed
+
+Normally Lead Finder only sends and checks replies while its tab is open. **Run while the app is closed** (on the Outreach tab, per profile) moves that to your server: on a schedule it checks replies (and drafts answers, alerts and updates the CRM) and sends due emails with the same sequence, sending hours, warm-up, daily limit, gap between emails and compliance check. You still read and send every answer to a reply yourself.
+
+Set it up once:
+
+1. **Database.** In Vercel, open your project, then **Storage** (or **Marketplace**), add **Upstash Redis** (the free plan is enough) and connect it to the project. That sets `KV_REST_API_URL` and `KV_REST_API_TOKEN`. (`UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` work too.)
+2. **Secrets.** Under **Settings, Environment Variables** add `BACKGROUND_SECRET` (a random string of 32 or more characters; it encrypts your mailbox password) and `CRON_SECRET` (a random string of 16 or more characters). Redeploy.
+3. **Schedule.** `vercel.json` runs it once a day (14:00 UTC), which is all Vercel's free Hobby plan allows. To send through the day, add a free job at [cron-job.org](https://cron-job.org) that calls `https://<your site>/api/background` every 5 minutes with the header `Authorization: Bearer <your CRON_SECRET>`. Because your site is behind Vercel Authentication, create a bypass secret under **Settings, Deployment Protection, Protection Bypass for Automation** and add it as a second header, `x-vercel-protection-bypass: <that secret>`. (On Vercel Pro you can instead change the schedule in `vercel.json` to `*/5 * * * *`.)
+4. **Turn it on.** On the Outreach tab, **Run while the app is closed**, press **Turn on**. The tab stops sending on its own; **Run now** runs it immediately.
+
+How it works:
+
+- Your browser and the server each keep a copy and bring each other up to date every minute while the tab is open, and a few seconds after you change something. Emails the server sent, replies it found and status changes (Contacted, Replied) show up in the app; your sequence wording, drafts, leads you add or take out, and unsubscribes reach the server. A stop on either side always wins.
+- Each email is marked as being sent before it's sent, so a run that dies mid-send never sends it twice (it shows as "Send result unknown").
+- Each run lasts under a minute, so with the default 45-second gap a 5-minute schedule sends about one email per run (up to 12 an hour), always within your daily limit and warm-up.
+- The mailbox password is stored encrypted with `BACKGROUND_SECRET`. **Turn off** deletes the server's copy and the stored password. If you change `BACKGROUND_SECRET`, turn it off and on again.
+
 ### Not built yet
 
-Sending and checking replies while the app is closed (needs a database and Vercel Cron), open and click tracking, finding email addresses, and SMS.
+Open and click tracking (left out on purpose), LinkedIn automation (against LinkedIn's rules), a paid contact database, and SMS.
 
 ## Outreach rules
 

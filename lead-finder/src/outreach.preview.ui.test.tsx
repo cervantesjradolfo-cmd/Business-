@@ -73,6 +73,22 @@ describe('email preview in Outreach', () => {
     expect(stored.enrollments[LEAD.id].drafts[0]).toEqual({ subject: 'A faster site for Corner Cafe', body: 'Hi Corner Cafe team,\n\nAI wrote this.', source: 'ai' })
   })
 
+  it('passes the compliance check, and blocks an edit that fakes prior contact', async () => {
+    stubAi({ ai: false })
+    const user = userEvent.setup()
+    const due = await openOutreach(user)
+    await user.click(within(due).getByRole('button', { name: 'Preview first email' }))
+    expect(within(due).getByText(/Passes the compliance check/)).toBeTruthy()
+    await user.click(within(due).getByRole('button', { name: 'Edit' }))
+    await user.clear(within(due).getByLabelText('Subject'))
+    await user.type(within(due).getByLabelText('Subject'), 'Re: our chat')
+    await user.click(within(due).getByRole('button', { name: 'Save email' }))
+    expect(within(due).getByText(/Won't be sent until this is fixed/)).toBeTruthy()
+    expect(within(due).getAllByText(/pretends you have written before/).length).toBeGreaterThan(0)
+    expect((within(due).getByRole('button', { name: 'Mark as sent' }) as HTMLButtonElement).disabled).toBe(true)
+    expect(within(due).queryByRole('link', { name: 'Open in email app' })).toBeNull()
+  })
+
   it('says so when AI is not set up, and keeps the wording', async () => {
     stubAi({ ai: false })
     const user = userEvent.setup()

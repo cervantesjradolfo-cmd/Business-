@@ -4,12 +4,19 @@ import {
   buildStepEmail, canEnroll, dueAt, dueSteps, enrollAll, enrollmentLabel, formatDue, mailboxReady, mailtoHref, recordSent,
   senderReady, sentTodayCount, setDraft, setPending, suppress, unenroll, unknownVariables, OUTREACH_VARIABLES,
 } from '../lib/outreach'
+import { complianceProblems } from '../lib/compliance'
+import { effectiveDailyCap, inSendWindow, warmupLabel, windowLabel } from '../lib/sendWindow'
 import { aiDraftFor } from '../lib/outreachAi'
 import { handledReplies, inboxReady, pendingReplies, updateReply } from '../lib/replies'
 import type { RunStatus } from '../lib/useOutreachRunner'
 import type { ReplyCheck } from '../lib/useReplies'
-import type { Campaign, ClientProfile, Enrollment, Mailbox, OutreachState, Pitch, SavedLead, Sender, SendResult } from '../lib/types'
+import type { Campaign, ClientProfile, Enrollment, Integrations, Mailbox, OutreachState, Pitch, SavedLead, Sender, SendResult } from '../lib/types'
+import type { ImportedRow } from '../lib/csvImport'
 import EmailPreview from './EmailPreview'
+import ImportCsv from './ImportCsv'
+import IntegrationsPanel from './IntegrationsPanel'
+import BackgroundPanel from './BackgroundPanel'
+import type { BackgroundView } from '../lib/useBackground'
 import MailboxSettings from './MailboxSettings'
 import RepliesPanel from './RepliesPanel'
 
@@ -37,6 +44,10 @@ type Props = {
   }
   onOpenLead: (id: string) => void
   onOpenSettings: () => void
+  onImport: (rows: ImportedRow[], addToOutreach: boolean) => string
+  onBooked: (s: SavedLead) => void // sets the lead to Meeting booked
+  integrations: Integrations
+  background: { view: BackgroundView; turnOn: () => void; turnOff: () => void; runNow: () => void }
 }
 
 const btn = 'rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50'
@@ -106,7 +117,7 @@ function SequenceEditor({ campaign, onSave }: { campaign: Campaign; onSave: (c: 
         <button type="button" className={btn} onClick={() => edit({ followUps: [...draft.followUps, { delayDays: 7, body: 'Hi {{business}} team,\n\n' }] })}>Add follow-up</button>
       )}
       <p className="text-xs text-slate-500">
-        Variables: {OUTREACH_VARIABLES.map((v) => `{{${v}}}`).join(' ')}. Your signature and the opt-out line are added automatically.
+        Variables: {OUTREACH_VARIABLES.map((v) => `{{${v}}}`).join(' ')}. The last one is the booking link from your details. Your signature and the opt-out line are added automatically.
         Follow-ups are sent as replies to the first email.
       </p>
       {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
@@ -131,6 +142,7 @@ export default function OutreachTab(p: Props) {
   const countdown = useCountdown(status.nextAt)
   const enrolled = Object.values(state.enrollments).sort((a, b) => a.enrolledAt.localeCompare(b.enrolledAt))
   const sentToday = sentTodayCount(state, now)
+  const bg = p.background.view.enabled
 
   function markSent(e: Enrollment) {
     const s = saved[e.leadId]
@@ -141,6 +153,12 @@ export default function OutreachTab(p: Props) {
     if (s.status === 'new') p.markContacted(s)
   }
 
+  // What the compliance check finds wrong with this lead's next email ([] = it passes).
+  function problemsFor(e: Enrollment, built: ReturnType<typeof buildStepEmail> | undefined): string[] {
+    if (!built?.ok) return []
+    return complianceProblems({ kind: e.nextStep === 0 ? 'first' : 'followup', to: e.email, subject: built.subject, body: built.body }, sender, state.suppressed)
+  }
+
   function preview(e: Enrollment, s: SavedLead | undefined) {
     if (!s || e.state !== 'active') return null
     const step = e.nextStep
@@ -148,7 +166,7 @@ export default function OutreachTab(p: Props) {
     return (
       <EmailPreview
         key={`${e.leadId}:${step}`}
-        built={built} step={step} sender={sender} hasDraft={!!e.drafts?.[step]} locked={!!e.pendingSend || p.status.running}
+        built={built} step={step} sender={sender} problems={problemsFor(e, built)} hasDraft={!!e.drafts?.[step]} locked={!!e.pendingSend || p.status.running}
         onAi={async () => {
           const draft = await aiDraftFor({ saved: s, enrollment: e, step, sender, profile: p.profile, pitch: p.pitchFor(s), campaign: state.campaign })
           // Only apply it if the lead is still on that step (a send may have finished meanwhile).
@@ -166,6 +184,7 @@ export default function OutreachTab(p: Props) {
     const at = dueAt(e, state.campaign)
     const built = s ? buildStepEmail({ enrollment: e, saved: s, pitch: p.pitchFor(s), campaign: state.campaign, sender }) : undefined
     const total = state.campaign.followUps.length + 1
+    const problems = problemsFor(e, built)
     return (
       <li key={e.leadId} className="space-y-1 rounded-lg border border-slate-200 p-3 text-sm">
         <div className="flex flex-wrap items-baseline justify-between gap-x-3">
@@ -175,6 +194,7 @@ export default function OutreachTab(p: Props) {
         <p className="break-all text-slate-600">{e.email}</p>
         {e.lastError && <p className="text-red-700">{e.lastError}</p>}
         {built && !built.ok && <p className="text-red-700">{built.error}</p>}
+        {problems.length > 0 && <p className="text-red-700">Blocked by the compliance check: {problems.join(' ')}</p>}
         {preview(e, s)}
         {e.pendingSend ? (
           <div className="space-y-1">
@@ -186,12 +206,12 @@ export default function OutreachTab(p: Props) {
           </div>
         ) : !smtp && (
           <div className="flex flex-wrap gap-2">
-            {built?.ok && ready ? (
+            {built?.ok && ready && problems.length === 0 ? (
               <a className={btn} href={mailtoHref(e.email, built.subject, built.body)}>Open in email app</a>
             ) : (
               <button type="button" className={btn} disabled>Open in email app</button>
             )}
-            <button type="button" className={btn} disabled={!built?.ok || !ready} onClick={() => markSent(e)}>Mark as sent</button>
+            <button type="button" className={btn} disabled={!built?.ok || !ready || problems.length > 0} onClick={() => markSent(e)}>Mark as sent</button>
           </div>
         )}
       </li>
@@ -213,12 +233,20 @@ export default function OutreachTab(p: Props) {
         </p>
       )}
 
+      <BackgroundPanel view={p.background.view} canTurnOn={smtp && ready} onTurnOn={p.background.turnOn} onTurnOff={p.background.turnOff} onRunNow={p.background.runNow} />
+
       <RepliesPanel
         pending={pendingReplies(state)} handled={handledReplies(state)} saved={saved} sender={sender}
         canCheck={inboxReady(mailbox)} canSend={smtp} checkedAt={state.inboxCheckedAt} check={p.replies.check}
-        onCheck={p.replies.checkNow} onDraft={(id) => p.replies.draft(id, true)} onSend={p.replies.send}
+        onCheck={bg ? p.background.runNow : p.replies.checkNow} onDraft={(id) => p.replies.draft(id, true)} onSend={p.replies.send}
         onSaveDraft={(id, body) => p.update((cur) => updateReply(cur, id, { draft: { body, source: 'edited' } }))}
         onHandled={(id, how) => p.update((cur) => updateReply(cur, id, { handled: { at: new Date().toISOString(), how } }))}
+        onBooked={(id) => {
+          const r = state.replies[id]
+          const s = r && saved[r.leadId]
+          if (s) p.onBooked(s)
+          p.update((cur) => updateReply(cur, id, { handled: { at: new Date().toISOString(), how: 'booked' } }))
+        }}
         onOpenLead={p.onOpenLead}
       />
 
@@ -229,7 +257,12 @@ export default function OutreachTab(p: Props) {
         ) : (
           <ul className="space-y-2">{rows.map(renderRow)}</ul>
         )}
-        {smtp && (
+        {smtp && bg && (
+          <p className="border-t border-slate-100 pt-3 text-sm text-slate-600">
+            The server sends these on schedule (Run while the app is closed is on). {sentToday} of {effectiveDailyCap(mailbox, state.mailboxStartedAt, now)} sent today.
+          </p>
+        )}
+        {smtp && !bg && (
           <div className="space-y-2 border-t border-slate-100 pt-3">
             <div className="flex flex-wrap items-center gap-2">
               <button type="button" className={primary} disabled={status.running || !ready || due.length === 0} onClick={p.onRun}>Send due emails</button>
@@ -246,7 +279,11 @@ export default function OutreachTab(p: Props) {
             )}
             {!status.running && status.sent > 0 && <p role="status" className="text-sm text-slate-600">Sent {status.sent} of {status.total}</p>}
             {status.message && <p role="alert" className="text-sm text-red-700">{status.message}</p>}
-            <p className="text-xs text-slate-500">{sentToday} of {mailbox.dailyCap} sent today</p>
+            <p className="text-xs text-slate-500">
+              {sentToday} of {effectiveDailyCap(mailbox, state.mailboxStartedAt, now)} sent today. Sends {windowLabel(mailbox)} ({mailbox.timeZone})
+              {inSendWindow(mailbox, now) ? '.' : ', so nothing is sent right now.'}
+            </p>
+            {warmupLabel(mailbox, state.mailboxStartedAt, now) && <p className="text-xs text-slate-500">{warmupLabel(mailbox, state.mailboxStartedAt, now)}.</p>}
           </div>
         )}
       </section>
@@ -294,9 +331,13 @@ export default function OutreachTab(p: Props) {
         {Object.values(saved).some((s) => !canEnroll(s, state).ok) && <p className="text-xs text-slate-500">Leads already in outreach, unsubscribed or marked replied, won or lost are skipped.</p>}
       </section>
 
+      <ImportCsv onImport={p.onImport} />
+
       <SequenceEditor campaign={state.campaign} onSave={(campaign) => p.update((cur) => ({ ...cur, campaign }))} />
 
       <MailboxSettings mailbox={mailbox} sender={sender} onSave={p.onMailbox} onTest={p.onTest} />
+
+      <IntegrationsPanel integrations={p.integrations} saved={saved} />
 
       <section aria-label="Unsubscribed addresses" className={section}>
         <h3 className="text-sm font-semibold">Unsubscribed addresses ({state.suppressed.length})</h3>

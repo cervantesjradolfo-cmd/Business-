@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Loader2, Sparkles } from 'lucide-react'
+import { Loader2, ShieldCheck, ShieldAlert, Sparkles } from 'lucide-react'
 import { DRAFT_BODY_MAX, DRAFT_SUBJECT_MAX, stripFooter, type BuiltEmail } from '../lib/outreach'
 import type { Draft, Sender } from '../lib/types'
 
@@ -7,6 +7,7 @@ type Props = {
   built?: BuiltEmail
   step: number // 0 = first email
   sender: Sender
+  problems?: string[] // from the compliance check; [] = passes
   hasDraft: boolean
   locked: boolean // a send is in progress or its result is unknown: don't change the wording
   onAi: () => Promise<boolean> // false = AI isn't set up, nothing changed
@@ -19,7 +20,7 @@ const input = 'w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus
 const SOURCE_LABELS = { template: 'Template', ai: 'Written by AI', edited: 'Edited' } as const
 
 // The exact email a sequence step will send, with AI rewrite and hand edits.
-export default function EmailPreview({ built, step, sender, hasDraft, locked, onAi, onSave, onReset }: Props) {
+export default function EmailPreview({ built, step, sender, problems = [], hasDraft, locked, onAi, onSave, onReset }: Props) {
   const [open, setOpen] = useState(false)
   const [editing, setEditing] = useState<{ subject: string; body: string } | null>(null)
   const [loading, setLoading] = useState(false)
@@ -83,6 +84,14 @@ export default function EmailPreview({ built, step, sender, hasDraft, locked, on
                 <span className="rounded-full bg-white px-2 py-0.5 text-xs text-slate-600 ring-1 ring-slate-200">{SOURCE_LABELS[built.source]}</span>
               </div>
               <pre className="max-h-80 overflow-y-auto whitespace-pre-wrap break-words rounded-md border border-slate-200 bg-white p-3 font-sans text-sm text-slate-800">{built.body}</pre>
+              {problems.length === 0 ? (
+                <p className="flex items-center gap-1 text-xs text-green-700"><ShieldCheck className="h-4 w-4" aria-hidden />Passes the compliance check: your details, postal address and opt-out line are in, and nothing pretends you have talked before.</p>
+              ) : (
+                <div role="alert" className="text-xs text-red-700">
+                  <p className="flex items-center gap-1 font-medium"><ShieldAlert className="h-4 w-4" aria-hidden />Won't be sent until this is fixed:</p>
+                  <ul className="ml-5 list-disc">{problems.map((x) => <li key={x}>{x}</li>)}</ul>
+                </div>
+              )}
               <div className="flex flex-wrap gap-2">
                 <button type="button" className={btn} disabled={loading || locked} onClick={writeWithAi}>
                   {loading ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Sparkles className="h-4 w-4" aria-hidden />}

@@ -1,7 +1,7 @@
 import { buildTemplatePitch } from './pitch'
 import { getAccessKey } from './storage'
 import type {
-  AuditResult, FollowUpRequest, FollowUpResponse, InboxRequest, InboxResult, Pitch, PitchRequest, ProjectsRequest, ProjectsResponse,
+  AlertRequest, AuditResult, CrmLead, CrmResult, Integrations, Reviews, ReviewsRequest, FollowUpRequest, FollowUpResponse, InboxRequest, InboxResult, Pitch, PitchRequest, ProjectsRequest, ProjectsResponse,
   ReplyDraft, ReplyDraftResponse, ReplyRequest, SearchRequest, SearchResponse, SendRequest, SendResult,
 } from './types'
 
@@ -136,4 +136,35 @@ export async function fetchReplyDraft(req: ReplyRequest, signal?: AbortSignal): 
     if (signal?.aborted) throw e
     return null
   }
+}
+
+// Which alerts and CRMs the server has set up. All off when the server can't be reached.
+export async function fetchIntegrations(signal?: AbortSignal): Promise<Integrations> {
+  const off: Integrations = { slack: false, webhook: false, hubspot: false, ghl: false, places: false }
+  try {
+    const res = await fetch(`${BASE}/api/integrations`, { headers: accessHeaders(), signal })
+    if (!res.ok || !res.headers.get('content-type')?.startsWith('application/json')) return off
+    const d = (await res.json()) as Partial<Integrations>
+    return { slack: d.slack === true, webhook: d.webhook === true, hubspot: d.hubspot === true, ghl: d.ghl === true, places: d.places === true }
+  } catch {
+    return off
+  }
+}
+
+// Fire-and-forget alert; never throws.
+export async function sendAlert(req: AlertRequest): Promise<void> {
+  try {
+    await post('integrations?op=notify', req)
+  } catch {
+    // alerts are best effort
+  }
+}
+
+export async function syncCrm(leads: CrmLead[], signal?: AbortSignal): Promise<CrmResult> {
+  return post<CrmResult>('integrations?op=crm', { leads }, signal)
+}
+
+export async function fetchReviews(req: ReviewsRequest, signal?: AbortSignal): Promise<Reviews> {
+  const data = await post<{ reviews: Reviews }>('integrations?op=reviews', req, signal)
+  return data.reviews
 }

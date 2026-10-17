@@ -1,4 +1,5 @@
-import { ArrowLeft, Bookmark, BookmarkCheck, Clock, Globe, Loader2, Mail, MapPin, Phone } from 'lucide-react'
+import { useState } from 'react'
+import { ArrowLeft, Bookmark, BookmarkCheck, Clock, Flame, Globe, Loader2, Mail, MapPin, Phone, Star } from 'lucide-react'
 import { PRICING } from '../data/pricing'
 import { googleMapsUrl, googleSearchUrl } from '../lib/geo'
 import { formatDate, formatMiles, formatRange, formatUsd } from '../lib/format'
@@ -25,6 +26,7 @@ type Props = {
   onOutreachEmail?: (email: string) => void
   onEnroll?: () => void
   onUnsubscribe?: () => void
+  onCheckReviews?: () => Promise<void> // set when Google reviews are available on the server
 }
 
 const NOT_LISTED = <span className="text-slate-400">Not listed</span>
@@ -47,6 +49,49 @@ function Row({ icon, label, children }: { icon: React.ReactNode; label: string; 
   )
 }
 
+// Heat and its reasons, plus the Google reviews check when it's set up.
+function WhyNow({ lead, onCheckReviews }: { lead: ScoredLead; onCheckReviews?: () => Promise<void> }) {
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  if (lead.heatReasons.length === 0 && !onCheckReviews && !lead.reviews) return null
+  async function check() {
+    if (!onCheckReviews) return
+    setBusy(true)
+    setError('')
+    try {
+      await onCheckReviews()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Checking reviews failed.')
+    } finally {
+      setBusy(false)
+    }
+  }
+  const r = lead.reviews
+  return (
+    <section aria-label="Why now" className="space-y-1.5">
+      <h3 className="flex items-center gap-1 text-sm font-semibold"><Flame className="h-4 w-4 text-orange-500" aria-hidden />Heat {lead.heat} of 5</h3>
+      {lead.heatReasons.length > 0
+        ? <ul className="ml-5 list-disc text-sm text-slate-700">{lead.heatReasons.map((x) => <li key={x.label}>{x.label}</li>)}</ul>
+        : <p className="text-sm text-slate-500">No signs that now is a special moment. Heat rises with fresh permits, hiring, a new opening, a broken website or weak reviews.</p>}
+      {r && (
+        <p className="flex flex-wrap items-center gap-1 text-sm text-slate-700">
+          <Star className="h-4 w-4 text-amber-500" aria-hidden />
+          {r.rating !== undefined ? `${r.rating.toFixed(1)} on Google from ${r.count ?? 0} reviews` : r.count ? `${r.count} Google reviews` : 'Not found on Google'}
+          {r.mapsUrl && <a className={link} href={r.mapsUrl} target="_blank" rel="noopener noreferrer">open</a>}
+          <span className="text-xs text-slate-500">checked {formatDate(r.checkedAt.slice(0, 10))}</span>
+        </p>
+      )}
+      {onCheckReviews && (
+        <button type="button" onClick={check} disabled={busy} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium hover:bg-slate-50 disabled:opacity-50">
+          {busy ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Star className="h-4 w-4" aria-hidden />}
+          {r ? 'Check Google reviews again' : 'Check Google reviews'}
+        </button>
+      )}
+      {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
+    </section>
+  )
+}
+
 export default function LeadDetail(p: Props) {
   const { lead } = p
   return (
@@ -60,7 +105,7 @@ export default function LeadDetail(p: Props) {
           <h2 className="text-lg font-bold leading-tight break-words">{lead.name}</h2>
           {!p.profile && <ScoreBadge score={lead.score} />}
         </div>
-        <p className="mt-1 text-sm text-slate-500">{lead.category} · {formatMiles(lead.distanceKm)} away</p>
+        <p className="mt-1 text-sm text-slate-500">{lead.category} · {lead.imported ? 'imported from a CSV' : `${formatMiles(lead.distanceKm)} away`}</p>
       </div>
 
       {lead.project && (
@@ -79,12 +124,20 @@ export default function LeadDetail(p: Props) {
         </section>
       )}
 
+      <WhyNow key={lead.id} lead={lead} onCheckReviews={p.onCheckReviews} />
+
       <section className="space-y-2" aria-label="Contact">
         <Row icon={<Phone className="h-4 w-4" />} label="Phone">
           {lead.phone ? <a className={link} href={`tel:${lead.phone.replace(/[^\d+]/g, '')}`}>{lead.phone}</a> : NOT_LISTED}
         </Row>
         <Row icon={<Mail className="h-4 w-4" />} label="Email">
-          {lead.email ? <a className={link} href={`mailto:${lead.email}`}>{lead.email}</a> : NOT_LISTED}
+          {lead.email ? <a className={link} href={`mailto:${lead.email}`}>{lead.email}</a>
+            : lead.audit?.emails?.length ? (
+              <span>
+                <a className={link} href={`mailto:${lead.audit.emails[0]}`}>{lead.audit.emails[0]}</a>
+                <span className="ml-1 text-xs text-slate-500">found on their website{lead.audit.emails.length > 1 ? ` (also ${lead.audit.emails.slice(1).join(', ')})` : ''}</span>
+              </span>
+            ) : NOT_LISTED}
         </Row>
         <Row icon={<Globe className="h-4 w-4" />} label="Website">
           {lead.website ? <a className={link} href={webHref(lead.website)} target="_blank" rel="noopener noreferrer">{lead.website}</a> : NOT_LISTED}
@@ -108,7 +161,7 @@ export default function LeadDetail(p: Props) {
           ) : (
             <>
               <a className={link} href={googleMapsUrl(lead)} target="_blank" rel="noopener noreferrer">Google Maps</a>
-              <a className={link} href={lead.osmUrl} target="_blank" rel="noopener noreferrer">OpenStreetMap</a>
+              {lead.osmUrl && <a className={link} href={lead.osmUrl} target="_blank" rel="noopener noreferrer">OpenStreetMap</a>}
             </>
           )}
         </div>

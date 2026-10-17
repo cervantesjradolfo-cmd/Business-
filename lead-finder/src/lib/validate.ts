@@ -1,7 +1,7 @@
 import { PRICING } from '../data/pricing.js'
 import { getCategory } from '../data/categories.js'
 import { GAP_DEFS } from './gaps.js'
-import type { AuditRequest, FollowUpRequest, GapId, InboxRequest, Offer, PitchRequest, ProjectsRequest, ReplyRequest, SearchRequest, SendRequest, Sender, ServiceId, CategoryId } from './types.js'
+import type { AlertRequest, AuditRequest, CrmLead, ReviewsRequest, FollowUpRequest, GapId, InboxRequest, Offer, PitchRequest, ProjectsRequest, ReplyRequest, SearchRequest, SendRequest, Sender, ServiceId, CategoryId } from './types.js'
 
 export type Parsed<T> = { ok: true; value: T } | { ok: false; error: string }
 const fail = (error: string): { ok: false; error: string } => ({ ok: false, error })
@@ -166,6 +166,7 @@ export function parseSendRequest(body: unknown): Parsed<SendRequest> {
   const rawSup = Array.isArray(body.suppressed) ? body.suppressed : []
   if (rawSup.length > 5000) return fail('Suppression list too long')
   const suppressed = rawSup.filter((v): v is string => typeof v === 'string').map((v) => v.trim().toLowerCase())
+  const kind = body.kind === 'first' || body.kind === 'followup' || body.kind === 'reply' || body.kind === 'test' ? body.kind : undefined
   return {
     ok: true,
     value: {
@@ -176,6 +177,7 @@ export function parseSendRequest(body: unknown): Parsed<SendRequest> {
       text,
       ...(inReplyTo ? { inReplyTo } : {}),
       suppressed,
+      ...(kind ? { kind } : {}),
     },
   }
 }
@@ -240,15 +242,95 @@ export function parseReplyRequest(body: unknown): Parsed<ReplyRequest> {
   const services = (Array.isArray(body.services) ? body.services : []).filter(
     (v): v is ServiceId => typeof v === 'string' && Object.hasOwn(PRICING, v),
   )
+  const bookingUrl = typeof s.bookingUrl === 'string' && /^https?:\/\/[^\s<>"]{3,300}$/.test(s.bookingUrl.trim()) ? s.bookingUrl.trim() : undefined
   return {
     ok: true,
     value: {
       lead: { name, category: optStr(body.lead.category) ?? 'business', city: optStr(body.lead.city) },
-      sender: { name: reqStr(s.name), business: reqStr(s.business) },
+      sender: { name: reqStr(s.name), business: reqStr(s.business), ...(bookingUrl ? { bookingUrl } : {}) },
       services,
       ...(offer ? { offer: { services: optStr(offer.services, 300) ?? '', ...(points ? { sellingPoints: points } : {}) } } : {}),
       ourEmail: { subject: optStr(ours.subject, 300) ?? '', body: typeof ours.body === 'string' ? ours.body.trim().slice(0, 5000) : '' },
       theirReply,
+    },
+  }
+}
+
+const STATUS_VALUES = ['new', 'contacted', 'replied', 'booked', 'won', 'lost'] as const
+const INTENT_VALUES = ['interested', 'question', 'not_now', 'not_interested', 'unsubscribe', 'auto_reply', 'other'] as const
+const line = (v: unknown, max = 200) => (typeof v === 'string' ? v.replace(/[\r\n]+/g, ' ').trim().slice(0, max) : '')
+
+export function parseAlertRequest(body: unknown): Parsed<AlertRequest> {
+  if (!isObj(body) || !isObj(body.lead)) return fail('Invalid request')
+  if (body.event !== 'reply' && body.event !== 'booked') return fail('Unknown event')
+  const name = line(body.lead.name)
+  if (!name) return fail('Business name is required')
+  const opt = (v: unknown, max = 200) => {
+    const s = line(v, max)
+    return s || undefined
+  }
+  const intent = INTENT_VALUES.find((i) => i === body.intent)
+  const lead = {
+    name,
+    ...(opt(body.lead.email) ? { email: opt(body.lead.email) } : {}),
+    ...(opt(body.lead.phone, 50) ? { phone: opt(body.lead.phone, 50) } : {}),
+    ...(opt(body.lead.website, 300) ? { website: opt(body.lead.website, 300) } : {}),
+    ...(opt(body.lead.city, 100) ? { city: opt(body.lead.city, 100) } : {}),
+  }
+  return {
+    ok: true,
+    value: {
+      event: body.event,
+      lead,
+      ...(opt(body.from) ? { from: opt(body.from) } : {}),
+      ...(intent ? { intent } : {}),
+      ...(opt(body.intentLabel, 50) ? { intentLabel: opt(body.intentLabel, 50) } : {}),
+      ...(opt(body.summary, 300) ? { summary: opt(body.summary, 300) } : {}),
+      ...(typeof body.text === 'string' && body.text.trim() ? { text: body.text.trim().slice(0, 2000) } : {}),
+    },
+  }
+}
+
+export const CRM_BATCH_MAX = 25
+
+export function parseCrmRequest(body: unknown): Parsed<CrmLead[]> {
+  if (!isObj(body) || !Array.isArray(body.leads)) return fail('Invalid request')
+  if (body.leads.length < 1) return fail('No leads to send')
+  if (body.leads.length > CRM_BATCH_MAX) return fail(`Too many leads (max ${CRM_BATCH_MAX} per request)`)
+  const out: CrmLead[] = []
+  for (const l of body.leads) {
+    if (!isObj(l)) return fail('Invalid lead')
+    const name = line(l.name)
+    if (!name) return fail('Business name is required')
+    const email = line(l.email, 254)
+    const status = STATUS_VALUES.find((s) => s === l.status) ?? 'new'
+    out.push({
+      name, status,
+      ...(isEmail(email) ? { email: email.toLowerCase() } : {}),
+      ...(line(l.phone, 50) ? { phone: line(l.phone, 50) } : {}),
+      ...(line(l.website, 300) ? { website: line(l.website, 300) } : {}),
+      ...(line(l.address, 300) ? { address: line(l.address, 300) } : {}),
+      ...(line(l.city, 100) ? { city: line(l.city, 100) } : {}),
+      ...(line(l.category, 100) ? { category: line(l.category, 100) } : {}),
+    })
+  }
+  return { ok: true, value: out }
+}
+
+export function parseReviewsRequest(body: unknown): Parsed<ReviewsRequest> {
+  if (!isObj(body)) return fail('Invalid request')
+  const name = line(body.name)
+  if (!name) return fail('Business name is required')
+  const num = (v: unknown, lim: number) => (typeof v === 'number' && Number.isFinite(v) && Math.abs(v) <= lim ? v : undefined)
+  const lat = num(body.lat, 90)
+  const lon = num(body.lon, 180)
+  return {
+    ok: true,
+    value: {
+      name,
+      ...(line(body.address, 300) ? { address: line(body.address, 300) } : {}),
+      ...(line(body.city, 100) ? { city: line(body.city, 100) } : {}),
+      ...(lat !== undefined && lon !== undefined ? { lat, lon } : {}),
     },
   }
 }

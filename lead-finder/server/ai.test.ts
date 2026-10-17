@@ -109,6 +109,12 @@ describe('aiReply', () => {
     expect(msg.sender.services[0]).toMatchObject({ name: 'Website', priceRangeUsd: '1500-5000' })
     expect(msg.theirReply).toBe('How much would it cost?')
   })
+  it('offers your booking link when you have one', async () => {
+    create.mockResolvedValue(answer({ intent: 'interested', summary: 'Wants a call', emailBody: 'Pick a time: https://cal.com/sam' }))
+    await aiReply({ ...req, sender: { ...req.sender, bookingUrl: 'https://cal.com/sam' } })
+    expect(create.mock.calls[0][0].system[0].text).toContain('sender.bookingUrl')
+    expect(JSON.parse(create.mock.calls[0][0].messages[0].content).sender.bookingUrl).toBe('https://cal.com/sam')
+  })
   it("uses the client's offer instead of prices for a client profile", async () => {
     create.mockResolvedValue(answer({ intent: 'interested', summary: 'Wants a bid', emailBody: 'Happy to bid.' }))
     await aiReply({ ...req, offer: { services: 'drywall' } })

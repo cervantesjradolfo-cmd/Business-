@@ -5,7 +5,9 @@ import { sendEmail } from './api'
 import {
   buildStepEmail, dueSteps, loadOutreach, mailboxReady, recordError, recordSent, sentTodayCount, setPending, suppress, syncWithSaved,
 } from './outreach'
+import { complianceError, complianceProblems } from './compliance'
 import { emailFooter } from './pitch'
+import { effectiveDailyCap, inSendWindow, nextWindowStart, windowLabel } from './sendWindow'
 import { writeJson } from './storage'
 import type { ClientProfile, Mailbox, OutreachState, Pitch, SavedLead, SendRequest, SendResult, Sender } from './types'
 
@@ -86,8 +88,16 @@ export function useOutreachRunner(a: Args) {
         const queue = dueSteps(state, saved, now, autoRun ? { skipRecentErrorsMs: RETRY_AFTER_ERROR_MS } : undefined).filter((e) => !failed.has(e.leadId))
         if (queue.length === 0) break
         total = sent + queue.length
-        if (sentTodayCount(state, now) >= mailbox.dailyCap) {
-          message = `Daily limit reached (${mailbox.dailyCap}). The rest stay due until tomorrow.`
+        if (!inSendWindow(mailbox, now)) {
+          const next = nextWindowStart(mailbox, now)
+          message = `Outside your sending hours (${windowLabel(mailbox)}). Due emails wait${next ? ` until ${next.toLocaleString('en-US', { weekday: 'short', hour: 'numeric', minute: '2-digit' })}` : ''}.`
+          break
+        }
+        const cap = effectiveDailyCap(mailbox, state.mailboxStartedAt, now)
+        if (sentTodayCount(state, now) >= cap) {
+          message = cap < mailbox.dailyCap
+            ? `Today's warm-up limit reached (${cap}). The rest stay due until tomorrow.`
+            : `Daily limit reached (${cap}). The rest stay due until tomorrow.`
           break
         }
         const waitMs = lastSentAt.current + mailbox.gapSeconds * 1000 - Date.now()
@@ -107,6 +117,13 @@ export function useOutreachRunner(a: Args) {
           continue
         }
         const step = e.nextStep
+        const kind = step === 0 ? 'first' : 'followup'
+        const problems = complianceProblems({ kind, to: e.email, subject: built.subject, body: built.body }, sender, state.suppressed)
+        if (problems.length) {
+          mutate((s) => recordError(s, e.leadId, complianceError(problems), new Date()))
+          failed.add(e.leadId)
+          continue
+        }
         mutate((s) => setPending(s, e.leadId, { step, startedAt: new Date().toISOString() }))
         // Never aborted mid-send: stop() only ends the waits.
         const res = await sendEmail({
@@ -117,6 +134,7 @@ export function useOutreachRunner(a: Args) {
           text: built.body,
           ...(built.inReplyTo ? { inReplyTo: built.inReplyTo } : {}),
           suppressed: state.suppressed,
+          kind,
         })
         lastSentAt.current = Date.now()
         if (res.ok) {
@@ -183,6 +201,7 @@ export function useOutreachRunner(a: Args) {
       subject: 'Lead Finder test email',
       text: `This is a test from Lead Finder. Your mailbox settings work.${emailFooter(sender)}`,
       suppressed: [],
+      kind: 'test',
     }
     return sendEmail(req)
   }, [])

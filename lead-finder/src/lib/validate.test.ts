@@ -149,3 +149,14 @@ describe('parseFollowUpRequest', () => {
     expect(parseFollowUpRequest(null).ok).toBe(false)
   })
 })
+
+describe('parseReplyRequest booking link', () => {
+  it('keeps an http(s) booking link and drops anything else', async () => {
+    const { parseReplyRequest } = await import('./validate')
+    const base = { lead: { name: 'Cafe' }, theirReply: 'hi', sender: { name: 'Sam', business: 'Acme' } }
+    const ok = parseReplyRequest({ ...base, sender: { ...base.sender, bookingUrl: 'https://cal.com/sam' } })
+    expect(ok.ok && ok.value.sender.bookingUrl).toBe('https://cal.com/sam')
+    const bad = parseReplyRequest({ ...base, sender: { ...base.sender, bookingUrl: 'javascript:alert(1)' } })
+    expect(bad.ok && bad.value.sender.bookingUrl).toBeUndefined()
+  })
+})

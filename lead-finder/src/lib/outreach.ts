@@ -1,15 +1,16 @@
 // Outreach (cold email): follow-up templates, scheduling and enrollment rules. Pure helpers, no React.
 // Edit the default follow-up wording here.
-import { STATUS_LABELS } from './csv'
-import { emailFooter } from './pitch'
-import { IMAP_HOSTS, loadReplies } from './replies'
-import { readJson } from './storage'
-import { isEmail } from './validate'
+import { STATUS_LABELS } from './csv.js'
+import { emailFooter } from './pitch.js'
+import { IMAP_HOSTS, loadReplies } from './replies.js'
+import { browserTimeZone, validTimeZone } from './sendWindow.js'
+import { readJson } from './localStore.js'
+import { isEmail } from './validate.js'
 import type {
   Campaign, Draft, Enrollment, Mailbox, OutreachEntry, OutreachState, Pitch, SavedLead, Sender, StopReason,
-} from './types'
+} from './types.js'
 
-export const OUTREACH_VARIABLES = ['business', 'sender_name', 'sender_business', 'city'] as const
+export const OUTREACH_VARIABLES = ['business', 'sender_name', 'sender_business', 'city', 'booking_link'] as const
 type Vars = Record<(typeof OUTREACH_VARIABLES)[number], string>
 
 const FOLLOW_UP_1 = 'Hi {{business}} team,\n\nI wanted to follow up on my note below in case it got buried. Would a quick call this week work?'
@@ -24,6 +25,7 @@ export const DEFAULT_CAMPAIGN: Campaign = {
 
 export const EMPTY_MAILBOX: Mailbox = {
   host: '', port: 465, secure: true, user: '', pass: '', fromName: '', fromAddress: '', gapSeconds: 45, dailyCap: 30, imapHost: '',
+  sendDays: [1, 2, 3, 4, 5], sendStart: 9, sendEnd: 17, timeZone: 'UTC', warmup: true,
 }
 
 export const MAILBOX_PRESETS: { id: 'gmail' | 'outlook' | 'zoho' | 'other'; label: string; host: string; port: 465 | 587; imapHost: string }[] = [
@@ -56,9 +58,10 @@ export function followUpSubject(subject: string): string {
   return /^re:/i.test(subject.trim()) ? subject.trim() : `Re: ${subject.trim()}`
 }
 
+// The address to email: one you typed, else the map listing's, else the first one found on their website.
 export function outreachEmailFor(s: SavedLead): string {
   if (typeof s.outreachEmail === 'string') return s.outreachEmail.trim()
-  return (s.lead.email ?? '').split(/[;,]/)[0].trim()
+  return (s.lead.email ?? '').split(/[;,]/)[0].trim() || (s.audit?.emails?.[0] ?? '')
 }
 
 export function senderReady(sender: Sender): boolean {
@@ -113,6 +116,10 @@ export function buildStepEmail(a: {
     sender_name: sender.name.trim(),
     sender_business: sender.business.trim(),
     city: saved.lead.city ?? saved.lead.project?.city ?? 'your area',
+    booking_link: sender.bookingUrl?.trim() ?? '',
+  }
+  if (!vars.booking_link && /\{\{\s*booking_link\s*\}\}/.test(followUp.body)) {
+    return { ok: false, error: 'This follow-up uses {{booking_link}}: add your booking link under Your/Profile details, or take it out of the Sequence.' }
   }
   return {
     ok: true,
@@ -158,7 +165,7 @@ export function canEnroll(s: SavedLead | undefined, state: OutreachState): Enrol
   if (Object.values(state.enrollments).some((e) => e.state !== 'stopped' && e.email === lower)) {
     return { ok: false, reason: 'Another lead in outreach uses this address' }
   }
-  if (s.status === 'replied' || s.status === 'won' || s.status === 'lost') {
+  if (s.status === 'replied' || s.status === 'booked' || s.status === 'won' || s.status === 'lost') {
     return { ok: false, reason: `Lead is marked ${STATUS_LABELS[s.status]}` }
   }
   return { ok: true, email: lower }
@@ -168,7 +175,9 @@ export function enroll(state: OutreachState, s: SavedLead, now: Date): OutreachS
   const check = canEnroll(s, state)
   if (!check.ok) return state
   const e: Enrollment = { leadId: s.lead.id, email: check.email, enrolledAt: now.toISOString(), nextStep: 0, state: 'active', history: [] }
-  return { ...state, enrollments: { ...state.enrollments, [e.leadId]: e } }
+  const removed = { ...state.removed }
+  delete removed[e.leadId]
+  return { ...state, enrollments: { ...state.enrollments, [e.leadId]: e }, ...(Object.keys(removed).length ? { removed } : { removed: undefined }) }
 }
 
 export function enrollAll(
@@ -188,11 +197,11 @@ export function enrollAll(
   return { state: next, added, skipped }
 }
 
-export function unenroll(state: OutreachState, leadId: string): OutreachState {
+export function unenroll(state: OutreachState, leadId: string, now: Date = new Date()): OutreachState {
   if (!state.enrollments[leadId]) return state
   const enrollments = { ...state.enrollments }
   delete enrollments[leadId]
-  return { ...state, enrollments }
+  return { ...state, enrollments, removed: { ...state.removed, [leadId]: now.toISOString() } }
 }
 
 // ---- scheduling ----
@@ -235,7 +244,7 @@ export function syncWithSaved(state: OutreachState, saved: Record<string, SavedL
       const s = saved[e.leadId]
       let reason: StopReason | undefined
       if (!s) reason = 'removed'
-      else if (s.status === 'replied' || s.status === 'won' || s.status === 'lost') reason = s.status
+      else if (s.status === 'replied' || s.status === 'booked' || s.status === 'won' || s.status === 'lost') reason = s.status
       else if (state.suppressed.includes(e.email)) reason = 'unsubscribed'
       if (reason) next = { ...e, state: 'stopped', stopReason: reason }
       else if (e.nextStep > state.campaign.followUps.length) next = { ...e, state: 'finished' }
@@ -285,7 +294,8 @@ export function recordSent(state: OutreachState, leadId: string, entry: Outreach
   delete updated.lastError
   delete updated.lastErrorAt
   const sentToday = entry.via === 'smtp' ? { day: localDay(now), count: sentTodayCount(state, now) + 1 } : state.sentToday
-  return { ...state, enrollments: { ...state.enrollments, [leadId]: updated }, sentToday }
+  const mailboxStartedAt = state.mailboxStartedAt ?? (entry.via === 'smtp' ? entry.sentAt : undefined)
+  return { ...state, enrollments: { ...state.enrollments, [leadId]: updated }, sentToday, ...(mailboxStartedAt ? { mailboxStartedAt } : {}) }
 }
 
 export function recordError(state: OutreachState, leadId: string, error: string, now: Date): OutreachState {
@@ -324,7 +334,7 @@ const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object
 const clampInt = (v: unknown, min: number, max: number, def: number): number =>
   typeof v === 'number' && Number.isFinite(v) ? Math.min(max, Math.max(min, Math.round(v))) : def
 const isoOrEmpty = (v: unknown): string => (typeof v === 'string' && !Number.isNaN(new Date(v).getTime()) ? v : '')
-const STOP_REASONS: StopReason[] = ['replied', 'won', 'lost', 'removed', 'unsubscribed']
+const STOP_REASONS: StopReason[] = ['replied', 'booked', 'won', 'lost', 'removed', 'unsubscribed']
 
 function loadCampaign(raw: unknown): Campaign {
   if (!isObj(raw) || !Array.isArray(raw.followUps)) return DEFAULT_CAMPAIGN
@@ -384,8 +394,19 @@ function loadEnrollment(raw: unknown): Enrollment | null {
   }
 }
 
+function loadRemoved(raw: unknown): Record<string, string> | undefined {
+  if (!isObj(raw)) return undefined
+  const out: Record<string, string> = {}
+  for (const [k, v] of Object.entries(raw)) if (isoOrEmpty(v)) out[k] = v as string
+  return Object.keys(out).length ? out : undefined
+}
+
 export function loadOutreach(key: string): OutreachState {
-  const raw = readJson<unknown>(key, null)
+  return parseOutreach(readJson<unknown>(key, null))
+}
+
+// Outreach state from untrusted JSON (localStorage, or a sync request on the server).
+export function parseOutreach(raw: unknown): OutreachState {
   const r = isObj(raw) ? raw : {}
   const enrollments: Record<string, Enrollment> = {}
   if (isObj(r.enrollments)) {
@@ -407,11 +428,31 @@ export function loadOutreach(key: string): OutreachState {
     sentToday: { day: typeof st.day === 'string' ? st.day : '', count: clampInt(st.count, 0, 1_000_000, 0) },
     replies: loadReplies(r.replies),
     ...(isoOrEmpty(r.inboxCheckedAt) ? { inboxCheckedAt: r.inboxCheckedAt as string } : {}),
+    ...(isoOrEmpty(r.mailboxStartedAt) ? { mailboxStartedAt: r.mailboxStartedAt as string } : {}),
+    ...(loadRemoved(r.removed) ? { removed: loadRemoved(r.removed) } : {}),
   }
 }
 
+function loadSchedule(r: Record<string, unknown>): Pick<Mailbox, 'sendDays' | 'sendStart' | 'sendEnd' | 'timeZone' | 'warmup'> {
+  const days = Array.isArray(r.sendDays)
+    ? [...new Set(r.sendDays.filter((d): d is number => Number.isInteger(d) && (d as number) >= 0 && (d as number) <= 6))].sort()
+    : EMPTY_MAILBOX.sendDays
+  let sendStart = clampInt(r.sendStart, 0, 23, EMPTY_MAILBOX.sendStart)
+  let sendEnd = clampInt(r.sendEnd, 1, 24, EMPTY_MAILBOX.sendEnd)
+  if (sendStart >= sendEnd) {
+    sendStart = EMPTY_MAILBOX.sendStart
+    sendEnd = EMPTY_MAILBOX.sendEnd
+  }
+  const tz = typeof r.timeZone === 'string' && validTimeZone(r.timeZone) ? r.timeZone : browserTimeZone()
+  return { sendDays: days, sendStart, sendEnd, timeZone: tz, warmup: r.warmup !== false }
+}
+
 export function loadMailbox(key: string): Mailbox {
-  const raw = readJson<unknown>(key, null)
+  return parseMailbox(readJson<unknown>(key, null))
+}
+
+// Mailbox settings from untrusted JSON.
+export function parseMailbox(raw: unknown): Mailbox {
   const r = isObj(raw) ? raw : {}
   const str = (v: unknown) => (typeof v === 'string' ? v : '')
   const known = r.port === 465 || r.port === 587 || r.port === 2525
@@ -428,5 +469,6 @@ export function loadMailbox(key: string): Mailbox {
     dailyCap: clampInt(r.dailyCap, 1, 200, EMPTY_MAILBOX.dailyCap),
     // Mailboxes saved before reply checks existed get their provider's IMAP server.
     imapHost: typeof r.imapHost === 'string' ? r.imapHost.trim() : (IMAP_HOSTS[str(r.host).trim()] ?? ''),
+    ...loadSchedule(r),
   }
 }

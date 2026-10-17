@@ -3,6 +3,9 @@ import { getCategory } from '../data/categories'
 import { DEFAULT_PROFILES } from '../data/profiles'
 import { cleanKeywords } from './validate'
 import type { AuditResult, CategoryId, ClientProfile, Lead, LeadStatus, Pitch, SavedLead, Sender } from './types'
+import { readJson, writeJson } from './localStore'
+
+export { readJson, writeJson }
 
 export const STORAGE_KEYS = {
   saved: 'leadfinder:saved',
@@ -45,24 +48,8 @@ export function setAccessKey(key: string): void {
   }
 }
 
-export function readJson<T>(key: string, fallback: T): T {
-  try {
-    const raw = window.localStorage.getItem(key)
-    return raw ? (JSON.parse(raw) as T) : fallback
-  } catch {
-    return fallback
-  }
-}
 
-export function writeJson(key: string, value: unknown): void {
-  try {
-    window.localStorage.setItem(key, JSON.stringify(value))
-  } catch {
-    // disabled or over quota: keep working in memory
-  }
-}
-
-const STATUSES: LeadStatus[] = ['new', 'contacted', 'replied', 'won', 'lost']
+const STATUSES: LeadStatus[] = ['new', 'contacted', 'replied', 'booked', 'won', 'lost']
 
 export function loadSaved(key: string = STORAGE_KEYS.saved): Record<string, SavedLead> {
   const raw = readJson<unknown>(key, {})
@@ -121,6 +108,30 @@ export function useSavedLeads(key: string = STORAGE_KEYS.saved) {
   )
 
   const save = useCallback((lead: Lead, audit?: AuditResult) => upsert(lead, audit, {}), [upsert])
+  // Saves many leads in one write (CSV import). Existing leads keep their status, notes and audit.
+  const saveMany = useCallback((items: { lead: Lead; notes?: string }[]): { saved: Record<string, SavedLead>; added: number; updated: number } => {
+    const prev = loadSaved(key)
+    const next = { ...prev }
+    const now = new Date().toISOString()
+    let added = 0
+    let updated = 0
+    for (const { lead, notes } of items) {
+      const old = next[lead.id]
+      if (old) updated++
+      else added++
+      next[lead.id] = {
+        ...old,
+        lead,
+        status: old?.status ?? 'new',
+        notes: old?.notes || notes || '',
+        savedAt: old?.savedAt ?? now,
+        updatedAt: now,
+      }
+    }
+    writeJson(key, next)
+    setSaved(next)
+    return { saved: next, added, updated }
+  }, [key])
   const remove = useCallback(
     (id: string) =>
       update((prev) => {
@@ -150,17 +161,30 @@ export function useSavedLeads(key: string = STORAGE_KEYS.saved) {
     [update],
   )
 
-  return { saved, save, remove, setStatus, setNotes, setPitch, setOutreachEmail }
+  return { saved, save, saveMany, remove, setStatus, setNotes, setPitch, setOutreachEmail }
 }
 
 export const EMPTY_SENDER: Sender = { name: '', business: '', email: '', phone: '', address: '', website: '' }
 
 const str = (v: unknown) => (typeof v === 'string' ? v : '')
 
+// A web address that can go in an email as a booking link.
+export function isBookingUrl(v: string): boolean {
+  try {
+    const u = new URL(v.trim())
+    return (u.protocol === 'https:' || u.protocol === 'http:') && u.hostname.includes('.') && v.trim().length <= 300
+  } catch {
+    return false
+  }
+}
+
 function toSender(raw: unknown): Sender {
   if (!raw || typeof raw !== 'object') return EMPTY_SENDER
   const r = raw as Partial<Sender>
-  return { name: str(r.name), business: str(r.business), email: str(r.email), phone: str(r.phone), address: str(r.address), website: str(r.website) }
+  return {
+    name: str(r.name), business: str(r.business), email: str(r.email), phone: str(r.phone), address: str(r.address), website: str(r.website),
+    ...(isBookingUrl(str(r.bookingUrl)) ? { bookingUrl: str(r.bookingUrl).trim() } : {}),
+  }
 }
 
 function loadSender(): Sender {

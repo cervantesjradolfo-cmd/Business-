@@ -1,6 +1,7 @@
 // @vitest-environment node
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { NOMINATIM_FORBIDDEN, geocode, overpassSearch, searchBusinesses } from './osm'
+import { OVERPASS_MIRRORS } from '../src/lib/overpass'
 
 const okJson = (data: unknown) => new Response(JSON.stringify(data), { status: 200, headers: { 'content-type': 'application/json' } })
 const geo = [{ lat: '30.27', lon: '-97.74', display_name: 'Austin, TX' }]
@@ -34,7 +35,39 @@ describe('overpassSearch', () => {
   it('returns null when all mirrors fail', async () => {
     stub(() => { throw new Error('down') })
     expect(await overpassSearch('q')).toBeNull()
-    expect(calls).toHaveLength(3)
+    expect(calls).toHaveLength(OVERPASS_MIRRORS.length)
+  })
+  // A busy mirror that never answers in time must not hold up the next one.
+  const hang = (init?: RequestInit) => new Promise<Response>((_, reject) => {
+    init?.signal?.addEventListener('abort', () => reject(new Error('aborted')))
+  })
+  it('asks the next mirror when the first is slow, and cancels the slow one when the next answers', async () => {
+    const signals: AbortSignal[] = []
+    stub((url, init) => {
+      signals.push(init!.signal!)
+      return url.includes('overpass-api.de') ? hang(init) : okJson(elements)
+    })
+    const r = await overpassSearch('q', 20)
+    expect(r?.mirror).toContain('kumi.systems')
+    expect(calls).toHaveLength(2)
+    expect(signals[0].aborted).toBe(true)
+  })
+  it('keeps the first answer even when it comes from a mirror asked earlier', async () => {
+    stub((url, init) => (url.includes('overpass-api.de')
+      ? new Promise<Response>((r) => setTimeout(() => r(okJson(elements)), 60))
+      : hang(init)))
+    const r = await overpassSearch('q', 10)
+    expect(r?.mirror).toContain('overpass-api.de')
+  })
+  it('gives up when no mirror answers within the time budget', async () => {
+    stub((_, init) => hang(init))
+    expect(await overpassSearch('q', 5, 60)).toBeNull()
+  })
+  it('does not ask other mirrors when the first answers quickly', async () => {
+    stub(() => okJson(elements))
+    expect((await overpassSearch('q', 50))?.mirror).toContain('overpass-api.de')
+    await new Promise((r) => setTimeout(r, 80))
+    expect(calls).toHaveLength(1)
   })
 })
 

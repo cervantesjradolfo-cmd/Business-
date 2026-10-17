@@ -123,6 +123,34 @@ describe('auditWebsite', () => {
     expect(r.gaps).toEqual(expect.arrayContaining(['no_mobile_viewport', 'no_online_booking', 'missing_seo_tags']))
     expect(seen[1]).toBe('https://example.com/home')
   })
+  it('finds email addresses on the homepage', async () => {
+    stubNet(() => page('<html><body><a href="mailto:info@shop.example.org">Email us</a></body></html>'))
+    const r = await auditWebsite('a', 'https://shop.example.org')
+    expect(r.emails).toEqual(['info@shop.example.org'])
+    expect(seen).toHaveLength(1)
+  })
+  it('looks on the contact page when the homepage has no address, through the same checks', async () => {
+    stubNet((url) => (url.endsWith('/contact')
+      ? page('<p>Write to hello@shop.example.org</p>')
+      : page('<html><body><a href="/contact">Contact</a><a href="https://evil.example.net/contact">x</a></body></html>')))
+    const r = await auditWebsite('a', 'https://shop.example.org')
+    expect(r.emails).toEqual(['hello@shop.example.org'])
+    expect(seen).toEqual(['https://shop.example.org/', 'https://shop.example.org/contact'])
+    expect(addresses.every((a) => a === '93.184.216.34')).toBe(true)
+  })
+  it('never fetches a contact page on a private address', async () => {
+    // DNS rebinding: the same host is public for the homepage, private for the contact page.
+    lookup.mockReset().mockResolvedValueOnce([{ address: '93.184.216.34', family: 4 }]).mockResolvedValue([{ address: '10.0.0.1', family: 4 }])
+    stubNet((url) => (url.includes('/contact') ? page('secret@x.example.org') : page('<a href="/contact">Contact</a>')))
+    const r = await auditWebsite('a', 'https://shop.example.org')
+    expect(r.status).toBe('ok')
+    expect(r.emails).toBeUndefined()
+    expect(seen).toEqual(['https://shop.example.org/'])
+  })
+  it('reads buying signals from the homepage', async () => {
+    stubNet(() => page('<html><body><p>Now hiring servers!</p><a href="mailto:jobs@shop.example.org">x</a></body></html>'))
+    expect((await auditWebsite('a', 'https://shop.example.org')).signals).toEqual(['hiring'])
+  })
   it('falls back to http and reports no_https', async () => {
     stubNet((url) => (url.startsWith('https:') ? new Error('tls') : page('<html></html>')))
     const r = await auditWebsite('a', 'example.com')

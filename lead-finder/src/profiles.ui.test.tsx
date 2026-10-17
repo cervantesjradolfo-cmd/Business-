@@ -48,7 +48,7 @@ describe('client profiles', () => {
     expect(screen.getByRole('button', { name: /Your details/ })).toBeTruthy()
   })
 
-  it("searches Asher's customer types, skips website audits and ranks by contact details", async () => {
+  it("searches Asher's customer types, checks websites only for emails and ranks by contact details", async () => {
     stubApi()
     const user = userEvent.setup()
     render(<App />)
@@ -62,7 +62,8 @@ describe('client profiles', () => {
 
     await search(user)
     expect(calls.find((c) => c.path.endsWith('/api/search'))!.body).toMatchObject({ category: 'general_contractors' })
-    expect(calls.some((c) => c.path.endsWith('/api/audit'))).toBe(false)
+    // Websites are still checked, to find email addresses; the gaps aren't shown.
+    expect(calls.some((c) => c.path.endsWith('/api/audit'))).toBe(true)
     const names = screen.getAllByRole('heading', { level: 3 }).map((h) => h.textContent)
     expect(names).toEqual(['Summit Construction', 'Ridge Homes', 'Peak Builders'])
     expect(screen.queryByText('Min score')).toBeNull()
