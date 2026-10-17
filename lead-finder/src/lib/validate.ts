@@ -1,7 +1,7 @@
 import { PRICING } from '../data/pricing.js'
 import { getCategory } from '../data/categories.js'
 import { GAP_DEFS } from './gaps.js'
-import type { AuditRequest, FollowUpRequest, GapId, InboxRequest, Offer, PitchRequest, ProjectsRequest, ReplyRequest, SearchRequest, SendRequest, Sender, ServiceId, CategoryId } from './types.js'
+import type { AlertRequest, AuditRequest, CrmLead, FollowUpRequest, GapId, InboxRequest, Offer, PitchRequest, ProjectsRequest, ReplyRequest, SearchRequest, SendRequest, Sender, ServiceId, CategoryId } from './types.js'
 
 export type Parsed<T> = { ok: true; value: T } | { ok: false; error: string }
 const fail = (error: string): { ok: false; error: string } => ({ ok: false, error })
@@ -254,4 +254,65 @@ export function parseReplyRequest(body: unknown): Parsed<ReplyRequest> {
       theirReply,
     },
   }
+}
+
+const STATUS_VALUES = ['new', 'contacted', 'replied', 'booked', 'won', 'lost'] as const
+const INTENT_VALUES = ['interested', 'question', 'not_now', 'not_interested', 'unsubscribe', 'auto_reply', 'other'] as const
+const line = (v: unknown, max = 200) => (typeof v === 'string' ? v.replace(/[\r\n]+/g, ' ').trim().slice(0, max) : '')
+
+export function parseAlertRequest(body: unknown): Parsed<AlertRequest> {
+  if (!isObj(body) || !isObj(body.lead)) return fail('Invalid request')
+  if (body.event !== 'reply' && body.event !== 'booked') return fail('Unknown event')
+  const name = line(body.lead.name)
+  if (!name) return fail('Business name is required')
+  const opt = (v: unknown, max = 200) => {
+    const s = line(v, max)
+    return s || undefined
+  }
+  const intent = INTENT_VALUES.find((i) => i === body.intent)
+  const lead = {
+    name,
+    ...(opt(body.lead.email) ? { email: opt(body.lead.email) } : {}),
+    ...(opt(body.lead.phone, 50) ? { phone: opt(body.lead.phone, 50) } : {}),
+    ...(opt(body.lead.website, 300) ? { website: opt(body.lead.website, 300) } : {}),
+    ...(opt(body.lead.city, 100) ? { city: opt(body.lead.city, 100) } : {}),
+  }
+  return {
+    ok: true,
+    value: {
+      event: body.event,
+      lead,
+      ...(opt(body.from) ? { from: opt(body.from) } : {}),
+      ...(intent ? { intent } : {}),
+      ...(opt(body.intentLabel, 50) ? { intentLabel: opt(body.intentLabel, 50) } : {}),
+      ...(opt(body.summary, 300) ? { summary: opt(body.summary, 300) } : {}),
+      ...(typeof body.text === 'string' && body.text.trim() ? { text: body.text.trim().slice(0, 2000) } : {}),
+    },
+  }
+}
+
+export const CRM_BATCH_MAX = 25
+
+export function parseCrmRequest(body: unknown): Parsed<CrmLead[]> {
+  if (!isObj(body) || !Array.isArray(body.leads)) return fail('Invalid request')
+  if (body.leads.length < 1) return fail('No leads to send')
+  if (body.leads.length > CRM_BATCH_MAX) return fail(`Too many leads (max ${CRM_BATCH_MAX} per request)`)
+  const out: CrmLead[] = []
+  for (const l of body.leads) {
+    if (!isObj(l)) return fail('Invalid lead')
+    const name = line(l.name)
+    if (!name) return fail('Business name is required')
+    const email = line(l.email, 254)
+    const status = STATUS_VALUES.find((s) => s === l.status) ?? 'new'
+    out.push({
+      name, status,
+      ...(isEmail(email) ? { email: email.toLowerCase() } : {}),
+      ...(line(l.phone, 50) ? { phone: line(l.phone, 50) } : {}),
+      ...(line(l.website, 300) ? { website: line(l.website, 300) } : {}),
+      ...(line(l.address, 300) ? { address: line(l.address, 300) } : {}),
+      ...(line(l.city, 100) ? { city: line(l.city, 100) } : {}),
+      ...(line(l.category, 100) ? { category: line(l.category, 100) } : {}),
+    })
+  }
+  return { ok: true, value: out }
 }

@@ -4,10 +4,10 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { checkInbox, fetchReplyDraft, sendEmail } from './api'
 import { complianceError, complianceProblems } from './compliance'
 import { buildStepEmail, loadOutreach, mailboxReady, stripFooter } from './outreach'
-import { applyReplyDraft, inboxReady, inboxRequestFor, mergeReplies, replyEmail, updateReply } from './replies'
+import { OPT_OUT_INTENTS, applyReplyDraft, inboxReady, inboxRequestFor, mergeReplies, replyEmail, updateReply } from './replies'
 import { scoreLead } from './scoring'
 import { writeJson } from './storage'
-import type { ClientProfile, Mailbox, OutreachState, Pitch, ReplyRequest, SavedLead, Sender } from './types'
+import type { ClientProfile, Mailbox, OutreachState, Pitch, Reply, ReplyRequest, SavedLead, Sender } from './types'
 
 export type ReplyCheck = { checking: boolean; drafting: number; message?: string; error?: string }
 
@@ -23,6 +23,7 @@ type Args = {
   pitchFor: (s: SavedLead) => Pitch
   markReplied: (s: SavedLead) => void
   auto: boolean // check every few minutes (on while auto-send is on)
+  onNewReply?: (r: Reply, s: SavedLead) => void // a real reply that needs you (for alerts and CRM sync)
 }
 
 const smtpOf = (m: Mailbox) => ({ host: m.host.trim(), port: m.port, secure: m.secure, user: m.user, pass: m.pass })
@@ -124,7 +125,12 @@ export function useReplies(a: Args) {
       if (m.autoReplies) parts.push(`${m.autoReplies} auto-${m.autoReplies === 1 ? 'reply' : 'replies'} skipped`)
       setCheck((c) => ({ ...c, checking: false, message: parts.join(', ') }))
       for (const r of m.added) {
-        if (!r.handled) await draft(r.id)
+        if (r.handled) continue
+        await draft(r.id)
+        // Alert with what the AI made of it, unless it turned out to be an opt-out or an auto-reply.
+        const now = loadOutreach(latest.current.outreachKey).replies[r.id] ?? r
+        const s = latest.current.saved[r.leadId]
+        if (s && !now.handled && !(now.intent && OPT_OUT_INTENTS.includes(now.intent))) latest.current.onNewReply?.(now, s)
       }
     } finally {
       busy.current = false

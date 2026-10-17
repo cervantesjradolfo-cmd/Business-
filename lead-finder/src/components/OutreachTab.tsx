@@ -10,10 +10,11 @@ import { aiDraftFor } from '../lib/outreachAi'
 import { handledReplies, inboxReady, pendingReplies, updateReply } from '../lib/replies'
 import type { RunStatus } from '../lib/useOutreachRunner'
 import type { ReplyCheck } from '../lib/useReplies'
-import type { Campaign, ClientProfile, Enrollment, Mailbox, OutreachState, Pitch, SavedLead, Sender, SendResult } from '../lib/types'
+import type { Campaign, ClientProfile, Enrollment, Integrations, Mailbox, OutreachState, Pitch, SavedLead, Sender, SendResult } from '../lib/types'
 import type { ImportedRow } from '../lib/csvImport'
 import EmailPreview from './EmailPreview'
 import ImportCsv from './ImportCsv'
+import IntegrationsPanel from './IntegrationsPanel'
 import MailboxSettings from './MailboxSettings'
 import RepliesPanel from './RepliesPanel'
 
@@ -43,6 +44,7 @@ type Props = {
   onOpenSettings: () => void
   onImport: (rows: ImportedRow[], addToOutreach: boolean) => string
   onBooked: (s: SavedLead) => void // sets the lead to Meeting booked
+  integrations: Integrations
 }
 
 const btn = 'rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50'
@@ -323,6 +325,8 @@ export default function OutreachTab(p: Props) {
       <SequenceEditor campaign={state.campaign} onSave={(campaign) => p.update((cur) => ({ ...cur, campaign }))} />
 
       <MailboxSettings mailbox={mailbox} sender={sender} onSave={p.onMailbox} onTest={p.onTest} />
+
+      <IntegrationsPanel integrations={p.integrations} saved={saved} />
 
       <section aria-label="Unsubscribed addresses" className={section}>
         <h3 className="text-sm font-semibold">Unsubscribed addresses ({state.suppressed.length})</h3>

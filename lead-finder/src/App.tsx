@@ -2,7 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { SearchX, Target, Bookmark } from 'lucide-react'
 import clsx from 'clsx'
 import { DEMO_AUDITS, DEMO_LEADS } from './data/demo'
-import { ApiUnavailableError, auditLeads, fetchPitch, searchLeads, searchProjects } from './lib/api'
+import { ApiUnavailableError, auditLeads, fetchIntegrations, fetchPitch, searchLeads, searchProjects, sendAlert } from './lib/api'
+import { sendToCrm } from './lib/crm'
+import { INTENT_LABELS } from './lib/replies'
 import { csvFilename, leadsToCsv } from './lib/csv'
 import { applyFilters, sortByContact, sortLeads } from './lib/filters'
 import { toLead } from './lib/format'
@@ -15,7 +17,7 @@ import { useReplies } from './lib/useReplies'
 import { isEmail } from './lib/validate'
 import { scoreLead } from './lib/scoring'
 import { EMPTY_SENDER, savedKey, useProfiles, useSavedLeads, useSender, writeJson } from './lib/storage'
-import type { AuditResult, ClientProfile, Filters as FiltersState, Lead, Pitch, ProjectsRequest, SavedLead, ScoredLead, SearchRequest, Sender } from './lib/types'
+import type { AuditResult, ClientProfile, Filters as FiltersState, Integrations, Lead, LeadStatus, Pitch, ProjectsRequest, Reply, SavedLead, ScoredLead, SearchRequest, Sender } from './lib/types'
 import ApiNotice from './components/ApiNotice'
 import DemoBanner from './components/DemoBanner'
 import EmptyState from './components/EmptyState'
@@ -315,11 +317,45 @@ function Workspace({ profile, sender, header, settingsOpen, onOpenSettings }: Wo
   const runner = useOutreachRunner({
     outreach, outreachKey: outreachStoreKey, saved, mailbox, sender, profile, pitchFor: pitchForSaved, markContacted,
   })
+  // Alerts and CRM sync, when set up on the server.
+  const [integrations, setIntegrations] = useState<Integrations>({ slack: false, webhook: false, hubspot: false, ghl: false })
+  useEffect(() => {
+    const ctrl = new AbortController()
+    void fetchIntegrations(ctrl.signal).then((i) => { if (!ctrl.signal.aborted) setIntegrations(i) })
+    return () => ctrl.abort()
+  }, [])
+  const alerts = integrations.slack || integrations.webhook
+  const crm = integrations.hubspot || integrations.ghl
+  const leadInfo = (s: SavedLead) => ({
+    name: s.lead.name,
+    ...(outreachEmailFor(s) ? { email: outreachEmailFor(s) } : {}),
+    ...(s.lead.phone ? { phone: s.lead.phone } : {}),
+    ...(s.lead.website ? { website: s.lead.website } : {}),
+    ...(s.lead.city ? { city: s.lead.city } : {}),
+  })
+  const syncLead = useCallback((s: SavedLead, status: LeadStatus) => {
+    if (crm) void sendToCrm([{ ...s, status }]).catch(() => {})
+  }, [crm])
+  const onNewReply = useCallback((r: Reply, s: SavedLead) => {
+    if (alerts) {
+      void sendAlert({
+        event: 'reply', lead: leadInfo(s), from: r.from, ...(r.intent ? { intent: r.intent, intentLabel: INTENT_LABELS[r.intent] } : {}),
+        ...(r.summary ? { summary: r.summary } : {}), text: r.text,
+      })
+    }
+    syncLead(s, 'replied')
+  }, [alerts, syncLead])
+  // Status changes from the lead panel or a reply: saved, then mirrored to the CRM; a booking also alerts.
+  const changeStatus = useCallback((s: SavedLead, status: LeadStatus) => {
+    setStatus(s.lead, s.audit, status)
+    if (status !== s.status) syncLead(s, status)
+    if (status === 'booked' && s.status !== 'booked' && alerts) void sendAlert({ event: 'booked', lead: leadInfo(s) })
+  }, [setStatus, syncLead, alerts])
   const markReplied = useCallback((s: SavedLead) => {
     if (s.status === 'new' || s.status === 'contacted') setStatus(s.lead, s.audit, 'replied')
   }, [setStatus])
   const replies = useReplies({
-    outreach, outreachKey: outreachStoreKey, saved, mailbox, sender, profile, pitchFor: pitchForSaved, markReplied, auto: runner.status.auto,
+    outreach, outreachKey: outreachStoreKey, saved, mailbox, sender, profile, pitchFor: pitchForSaved, markReplied, auto: runner.status.auto, onNewReply,
   })
   useEffect(() => {
     const id = setInterval(() => setTick((t) => t + 1), 60_000)
@@ -457,7 +493,7 @@ function Workspace({ profile, sender, header, settingsOpen, onOpenSettings }: Wo
             sender={sender} profile={profile} now={now} pitchFor={pitchForSaved} markContacted={markContacted}
             status={runner.status} onRun={runner.runNow} onStop={runner.stop} onAuto={runner.setAuto} onTest={runner.sendTest} replies={replies}
             onOpenLead={(id) => { setTab('saved'); setSelectedId(id) }} onOpenSettings={onOpenSettings} onImport={importLeads}
-            onBooked={(s) => setStatus(s.lead, s.audit, 'booked')}
+            onBooked={(s) => changeStatus(s, 'booked')} integrations={integrations}
           />
         )}
 
@@ -485,7 +521,7 @@ function Workspace({ profile, sender, header, settingsOpen, onOpenSettings }: Wo
                 profile={profile}
                 onClose={() => setSelectedId(undefined)}
                 onToggleSave={() => (saved[selected.id] ? remove(selected.id) : save(toLead(selected), selected.audit))}
-                onStatus={(s) => setStatus(toLead(selected), selected.audit, s)}
+                onStatus={(s) => (saved[selected.id] ? changeStatus(saved[selected.id], s) : setStatus(toLead(selected), selected.audit, s))}
                 onNotes={(n) => setNotes(toLead(selected), selected.audit, n)}
                 onRegenerate={regenerate}
                 onOpenSettings={onOpenSettings}

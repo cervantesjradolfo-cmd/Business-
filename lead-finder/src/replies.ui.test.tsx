@@ -16,11 +16,14 @@ const MESSAGE = {
 }
 
 let calls: { path: string; body: any }[]
-function stub(o: { ai: boolean; messages?: unknown[] }) {
+function stub(o: { ai: boolean; messages?: unknown[]; integrations?: boolean }) {
   calls = []
   vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
     const body = init?.body ? JSON.parse(init.body as string) : undefined
     calls.push({ path: url, body })
+    if (url.endsWith('/api/integrations')) return jsonRes({ slack: !!o.integrations, webhook: false, hubspot: !!o.integrations, ghl: false })
+    if (url.endsWith('/api/notify')) return jsonRes({ sent: ['Slack'], failed: [] })
+    if (url.endsWith('/api/crm')) return jsonRes({ hubspot: { sent: body.leads.length, skipped: 0 } })
     if (url.endsWith('/api/inbox')) return jsonRes({ ok: true, messages: o.messages ?? [MESSAGE] })
     if (url.endsWith('/api/reply')) return jsonRes({ draft: o.ai ? { intent: 'question', summary: 'Asks the price', body: 'Hi Pat,\n\nA new site usually runs $1,500 to $5,000. Free for a quick call Thursday?' } : null })
     if (url.endsWith('/api/send')) return jsonRes({ ok: true, messageId: '<answer@acme>' })
@@ -112,6 +115,36 @@ describe('replies', () => {
     await user.click(within(panel).getByRole('button', { name: 'Meeting booked' }))
     expect(within(panel).getByText('Replies (0)')).toBeTruthy()
     expect(JSON.parse(window.localStorage.getItem('leadfinder:saved')!)[LEAD.id].status).toBe('booked')
+  })
+
+  it('alerts Slack and updates the CRM for a new reply and for a booking, when they are set up', async () => {
+    stub({ ai: true, integrations: true })
+    const user = userEvent.setup()
+    const panel = await checkReplies(user)
+    await waitFor(() => expect(calls.some((c) => c.path.endsWith('/api/notify'))).toBe(true))
+    expect(calls.find((c) => c.path.endsWith('/api/notify'))!.body).toMatchObject({
+      event: 'reply', lead: { name: 'Corner Cafe', email: 'owner@corner.example.com' }, from: 'owner@corner.example.com', intent: 'question', summary: 'Asks the price',
+    })
+    await waitFor(() => expect(calls.some((c) => c.path.endsWith('/api/crm'))).toBe(true))
+    expect(calls.find((c) => c.path.endsWith('/api/crm'))!.body.leads).toEqual([expect.objectContaining({ name: 'Corner Cafe', email: 'owner@corner.example.com', status: 'replied' })])
+
+    await user.click(within(panel).getByRole('button', { name: 'Meeting booked' }))
+    await waitFor(() => expect(calls.filter((c) => c.path.endsWith('/api/notify')).map((c) => c.body.event)).toEqual(['reply', 'booked']))
+    await waitFor(() => expect(calls.filter((c) => c.path.endsWith('/api/crm')).map((c) => c.body.leads[0].status)).toEqual(['replied', 'booked']))
+
+    const section = screen.getByRole('region', { name: 'Alerts and CRM' })
+    expect(within(section).getAllByLabelText('Connected')).toHaveLength(2)
+    await user.click(within(section).getByRole('button', { name: 'Send all saved leads to CRM (1)' }))
+    expect(await within(section).findByText('HubSpot: 1 sent')).toBeTruthy()
+  })
+
+  it('sends no alerts or CRM updates when nothing is set up', async () => {
+    stub({ ai: true })
+    const user = userEvent.setup()
+    await checkReplies(user)
+    await waitFor(() => expect(calls.some((c) => c.path.endsWith('/api/reply'))).toBe(true))
+    expect(calls.some((c) => c.path.endsWith('/api/notify') || c.path.endsWith('/api/crm'))).toBe(false)
+    expect(screen.queryByRole('button', { name: /Send all saved leads to CRM/ })).toBeNull()
   })
 
   it('unsubscribes a "no thanks" reply without asking you', async () => {

@@ -77,6 +77,26 @@ Each profile has its own signature details and its own saved leads. Press **Prof
 
 Only put true facts in **Selling points**: they go into the pitches as written, and the AI is told not to invent anything beyond them.
 
+## Alerts and CRM sync
+
+Set these in Vercel (Settings, Environment Variables) and redeploy. The Outreach tab's **Alerts and CRM** section shows what's connected.
+
+| Variable | What it does |
+|---|---|
+| `SLACK_WEBHOOK_URL` | A Slack incoming webhook (`https://hooks.slack.com/...`). Posts a message when a lead replies (with the AI's label and summary) or books. |
+| `ALERT_WEBHOOK_URL` | Any `https://` webhook (Zapier, Make, n8n). Gets the same alerts as JSON: `event` (`reply` or `booked`), `lead`, `from`, `intent`, `summary`, `text`. |
+| `HUBSPOT_TOKEN` | A HubSpot private app token with the CRM contacts write scope. Leads with an email become contacts (company, website, phone, city, address) with a lead status: Contacted is Attempted to contact, Replied is Connected, Meeting booked and Won are Open deal, Lost is Unqualified. |
+| `GHL_TOKEN` and `GHL_LOCATION_ID` | A GoHighLevel private integration token and the sub-account (location) id. Leads with an email or phone become contacts tagged `lead-finder` and `lead-finder-<status>`. |
+
+When they're set:
+
+- a real reply sends an alert and updates that lead in the CRM (opt-outs and auto-replies don't);
+- **Meeting booked** sends a booking alert and updates the CRM;
+- changing a saved lead's status in the lead panel updates the CRM;
+- **Send all saved leads to CRM** sends everything you've saved, 25 at a time.
+
+The tokens and webhook addresses stay on the server (`GET /api/integrations` only says yes or no for each), and the API can't be pointed anywhere else.
+
 ## Environment variables
 
 | Name | What it does |
@@ -86,6 +106,7 @@ Only put true facts in **Selling points**: they go into the pitches as written, 
 | `APP_ACCESS_KEY` | Optional but recommended for any public deploy. When set, every API call must send the same value in an `x-access-key` header, otherwise it gets a 401. Enter the key in the app under **Your details**. Leave it unset for local use. |
 | `SOCRATA_APP_TOKEN` | Optional. An app token for the Chicago data portal, used by Active projects. Only needed if permit searches get throttled. |
 | `VITE_API_BASE` | Optional. Front-end only. Points the app at an API on another origin. |
+| `SLACK_WEBHOOK_URL`, `ALERT_WEBHOOK_URL`, `HUBSPOT_TOKEN`, `GHL_TOKEN`, `GHL_LOCATION_ID` | Optional. Alerts and CRM sync, see "Alerts and CRM sync". |
 
 ## Protect your deployment
 

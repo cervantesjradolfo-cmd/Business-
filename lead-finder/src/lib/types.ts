@@ -258,3 +258,29 @@ export type Reply = InboxMessage & {
   draft?: { body: string; source: 'ai' | 'edited' }
   handled?: { at: string; how: 'sent' | 'manual' | 'dismissed' | 'auto' | 'booked' }
 }
+
+// ---- Alerts and CRM sync (set up with environment variables on the server) ----
+export type Integrations = { slack: boolean; webhook: boolean; hubspot: boolean; ghl: boolean }
+export type AlertRequest = {
+  event: 'reply' | 'booked'
+  lead: { name: string; email?: string; phone?: string; website?: string; city?: string }
+  from?: string // the address that replied
+  intent?: ReplyIntent
+  intentLabel?: string
+  summary?: string
+  text?: string // the reply, without quoted text
+}
+export type CrmLead = {
+  name: string
+  email?: string
+  phone?: string
+  website?: string
+  address?: string
+  city?: string
+  category?: string
+  status: LeadStatus
+}
+export type CrmResult = {
+  hubspot?: { sent: number; skipped: number; error?: string }
+  ghl?: { sent: number; skipped: number; error?: string }
+}
