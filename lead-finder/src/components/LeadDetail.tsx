@@ -84,7 +84,13 @@ export default function LeadDetail(p: Props) {
           {lead.phone ? <a className={link} href={`tel:${lead.phone.replace(/[^\d+]/g, '')}`}>{lead.phone}</a> : NOT_LISTED}
         </Row>
         <Row icon={<Mail className="h-4 w-4" />} label="Email">
-          {lead.email ? <a className={link} href={`mailto:${lead.email}`}>{lead.email}</a> : NOT_LISTED}
+          {lead.email ? <a className={link} href={`mailto:${lead.email}`}>{lead.email}</a>
+            : lead.audit?.emails?.length ? (
+              <span>
+                <a className={link} href={`mailto:${lead.audit.emails[0]}`}>{lead.audit.emails[0]}</a>
+                <span className="ml-1 text-xs text-slate-500">found on their website{lead.audit.emails.length > 1 ? ` (also ${lead.audit.emails.slice(1).join(', ')})` : ''}</span>
+              </span>
+            ) : NOT_LISTED}
         </Row>
         <Row icon={<Globe className="h-4 w-4" />} label="Website">
           {lead.website ? <a className={link} href={webHref(lead.website)} target="_blank" rel="noopener noreferrer">{lead.website}</a> : NOT_LISTED}

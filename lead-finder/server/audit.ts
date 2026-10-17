@@ -1,4 +1,5 @@
 // Website audit: fetches a homepage safely (no private addresses, bounded time and size).
+import { contactPageLinks, extractEmails } from '../src/lib/emails.js'
 import { detectSiteGaps } from '../src/lib/gaps.js'
 import { normalizeWebsite } from '../src/lib/url.js'
 import type { AuditResult } from '../src/lib/types.js'
@@ -49,6 +50,50 @@ async function readBody(res: Response): Promise<string> {
 
 const isTimeout = (e: unknown) => e instanceof Error && (e.name === 'TimeoutError' || e.name === 'AbortError')
 
+const auditHeaders = (): Record<string, string> => {
+  const email = contactEmail()
+  return {
+    'User-Agent': `Mozilla/5.0 (compatible; LeadFinderAudit/1.0${email ? `; +mailto:${email}` : ''})`,
+    Accept: 'text/html,application/xhtml+xml',
+  }
+}
+
+// One extra page (a contact page), following a few redirects. '' when it can't be read.
+async function fetchPage(start: string, signal: AbortSignal): Promise<string> {
+  let url = new URL(start)
+  for (let hop = 0; hop <= 3; hop++) {
+    const res = await safeGet(url, { signal, headers: auditHeaders() })
+    const loc = res.headers.get('location')
+    if (res.status >= 300 && res.status < 400 && loc) {
+      res.body?.cancel().catch(() => {})
+      url = new URL(loc, url)
+      continue
+    }
+    if (res.status < 200 || res.status >= 300 || !/html|xml/i.test(res.headers.get('content-type') ?? 'html')) {
+      res.body?.cancel().catch(() => {})
+      return ''
+    }
+    return readBody(res)
+  }
+  return ''
+}
+
+// Email addresses on the homepage, or else on up to two contact/about pages (within the audit's time budget).
+async function findEmails(html: string, finalUrl: string, signal: AbortSignal): Promise<string[]> {
+  const onHome = extractEmails(html, finalUrl)
+  if (onHome.length) return onHome
+  for (const link of contactPageLinks(html, finalUrl)) {
+    if (signal.aborted) break
+    try {
+      const found = extractEmails(await fetchPage(link, signal), finalUrl)
+      if (found.length) return found
+    } catch {
+      // try the next page
+    }
+  }
+  return []
+}
+
 export async function auditWebsite(id: string, website: string, now: Date = new Date()): Promise<AuditResult> {
   const checkedAt = now.toISOString()
   const candidates = normalizeWebsite(website)
@@ -65,14 +110,7 @@ export async function auditWebsite(id: string, website: string, now: Date = new 
       for (let hop = 0; ; hop++) {
         if (hop > MAX_REDIRECTS) throw new Error('Too many redirects')
         // Redirects are followed by hand; every hop is checked and connects only to a checked address.
-        const email = contactEmail()
-        const res = await safeGet(url, {
-          signal: deadline,
-          headers: {
-            'User-Agent': `Mozilla/5.0 (compatible; LeadFinderAudit/1.0${email ? `; +mailto:${email}` : ''})`,
-            Accept: 'text/html,application/xhtml+xml',
-          },
-        })
+        const res = await safeGet(url, { signal: deadline, headers: auditHeaders() })
         if (res.status >= 300 && res.status < 400 && res.headers.get('location')) {
           const loc = res.headers.get('location')!
           res.body?.cancel().catch(() => {})
@@ -87,7 +125,8 @@ export async function auditWebsite(id: string, website: string, now: Date = new 
           const elapsedMs = Date.now() - started
           const finalUrl = url.toString()
           const { gaps, detail } = detectSiteGaps(html, { finalUrl, elapsedMs, now })
-          return { id, status: 'ok', finalUrl, httpStatus: status, elapsedMs, gaps, detail, checkedAt }
+          const emails = html ? await findEmails(html, finalUrl, deadline) : []
+          return { id, status: 'ok', finalUrl, httpStatus: status, elapsedMs, gaps, detail, ...(emails.length ? { emails } : {}), checkedAt }
         }
         res.body?.cancel().catch(() => {})
         const cloudflare = !!res.headers.get('cf-ray') || /cloudflare/i.test(res.headers.get('server') ?? '')

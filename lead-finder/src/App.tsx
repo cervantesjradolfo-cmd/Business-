@@ -146,8 +146,8 @@ function Workspace({ profile, sender, header, settingsOpen, onOpenSettings }: Wo
 
   // Checks the websites of new leads in batches. Returns false if the run was stopped meanwhile.
   const auditNew = useCallback(async (found: Lead[], signal: AbortSignal, live: () => boolean): Promise<boolean> => {
-    // Client profiles don't pitch websites, so there is nothing to audit (project leads have no website).
-    const withSite = client ? [] : found.filter((l) => l.website?.trim())
+    // Every website is checked: for your agency it shows the gaps, and for every profile it finds email addresses.
+    const withSite = found.filter((l) => l.website?.trim())
     setPending(new Set(withSite.map((l) => l.id)))
     setProgress({ done: 0, total: withSite.length })
     if (withSite.length === 0) return true
@@ -167,7 +167,7 @@ function Workspace({ profile, sender, header, settingsOpen, onOpenSettings }: Wo
       setProgress({ done, total: withSite.length })
     }
     return true
-  }, [client])
+  }, [])
 
   const failRun = useCallback((e: unknown) => {
     if (e instanceof ApiUnavailableError) setPhase('unavailable')

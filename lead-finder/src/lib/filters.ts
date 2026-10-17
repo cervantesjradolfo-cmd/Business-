@@ -1,8 +1,8 @@
 import type { Filters, Lead, ScoredLead } from './types'
 
-// How many ways there are to reach a business: phone, email, website.
-export const contactCount = (l: Pick<Lead, 'phone' | 'email' | 'website'>): number =>
-  [l.phone, l.email, l.website].filter((v) => !!v?.trim()).length
+// How many ways there are to reach a business: phone, email (listed or found on their website), website.
+export const contactCount = (l: Pick<Lead, 'phone' | 'email' | 'website'> & Partial<Pick<ScoredLead, 'audit'>>): number =>
+  [l.phone, l.email || l.audit?.emails?.[0], l.website].filter((v) => !!v?.trim()).length
 
 // For client profiles: projects newest and biggest first, then businesses easiest to reach, then nearest.
 export function sortByContact(leads: ScoredLead[]): ScoredLead[] {

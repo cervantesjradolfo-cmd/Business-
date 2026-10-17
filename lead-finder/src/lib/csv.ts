@@ -39,7 +39,7 @@ export function leadsToCsv(leads: ScoredLead[], saved: Record<string, SavedLead>
     const s = saved[l.id]
     if (client) {
       rows.push([
-        l.name, l.category, l.phone, l.email, l.website, l.address, l.openingHours,
+        l.name, l.category, l.phone, l.email || l.audit?.emails?.[0], l.website, l.address, l.openingHours,
         miles(l.distanceKm), l.lat, l.lon, l.osmUrl, l.project?.description, l.project?.permit, l.project?.issued, l.project?.cost,
         STATUS_LABELS[s?.status ?? 'new'], s?.notes ?? '',
       ])
@@ -50,7 +50,7 @@ export function leadsToCsv(leads: ScoredLead[], saved: Record<string, SavedLead>
       l.gaps.map((g) => g.label).join('; '),
       l.services.map((x) => PRICING[x].label).join('; '),
       l.dealValue.min, l.dealValue.max,
-      l.phone, l.email, l.website, l.address, l.openingHours,
+      l.phone, l.email || l.audit?.emails?.[0], l.website, l.address, l.openingHours,
       miles(l.distanceKm), l.lat, l.lon, l.osmUrl,
       STATUS_LABELS[s?.status ?? 'new'],
       s?.notes ?? '',

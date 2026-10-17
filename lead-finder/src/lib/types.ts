@@ -60,6 +60,7 @@ export type AuditResult = {
   gaps: SiteGapId[] // only filled when status === 'ok'
   detail?: Partial<Record<SiteGapId, string>>
   note?: string
+  emails?: string[] // addresses found on the homepage or contact page, best first
   checkedAt: string // ISO
 }
 

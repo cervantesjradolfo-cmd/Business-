@@ -56,9 +56,10 @@ export function followUpSubject(subject: string): string {
   return /^re:/i.test(subject.trim()) ? subject.trim() : `Re: ${subject.trim()}`
 }
 
+// The address to email: one you typed, else the map listing's, else the first one found on their website.
 export function outreachEmailFor(s: SavedLead): string {
   if (typeof s.outreachEmail === 'string') return s.outreachEmail.trim()
-  return (s.lead.email ?? '').split(/[;,]/)[0].trim()
+  return (s.lead.email ?? '').split(/[;,]/)[0].trim() || (s.audit?.emails?.[0] ?? '')
 }
 
 export function senderReady(sender: Sender): boolean {

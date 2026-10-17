@@ -5,7 +5,7 @@ Lead Finder finds local businesses that are missing the things you build (a webs
 ## What it does
 
 1. You enter a town (or ZIP or address), pick a category and a radius.
-2. It lists businesses from OpenStreetMap, then checks each business's website homepage for gaps (no website, not mobile-friendly, no online booking, no chat, outdated, slow and more).
+2. It lists businesses from OpenStreetMap, then checks each business's website homepage for gaps (no website, not mobile-friendly, no online booking, no chat, outdated, slow and more). The same check looks for the business's email address on the homepage, or on its contact or about page when the homepage has none.
 3. Each lead gets an opportunity score from 0 to 100 (no website scores highest), a list of gaps in plain words, recommended services and an estimated deal value.
 4. For each lead you get a cold email, a text message and a phone opener. Templates are the default. With an Anthropic API key they are written by Claude.
 5. You can set a status (New, Contacted, Replied, Won, Lost), add notes, save leads across searches and export to CSV.
@@ -59,7 +59,7 @@ Business searches have **One place** and **Many places**. With **Many places**, 
 Lead Finder can also find customers for your clients. Pick a profile in **Finding leads for** at the top:
 
 - **My agency** (the default) finds businesses that are missing websites, booking and so on, and pitches your services.
-- **A client profile** (for example **Asher Construction**, which does drywall, metal framing and acoustic ceilings) searches the kinds of businesses that hire that client, such as general contractors and builders, property managers and architects. The pitch is an introduction written as the client. Website checks, scores and deal values are not used. Leads are ranked by how many ways there are to reach them (phone, email, website), then by distance.
+- **A client profile** (for example **Asher Construction**, which does drywall, metal framing and acoustic ceilings) searches the kinds of businesses that hire that client, such as general contractors and builders, property managers and architects. The pitch is an introduction written as the client. Scores, website gaps and deal values are not used, but websites are still checked to find email addresses. Leads are ranked by how many ways there are to reach them (phone, email, website), then by distance.
 
 ### Active projects (Chicago building permits)
 
@@ -100,7 +100,7 @@ The API endpoints are open to anyone who knows the URL: `/api/pitch` spends your
 - **Overpass API (OpenStreetMap business data).** Public instances are fair-use (around 10,000 queries a day) and can be slow or busy, so keep queries small. The app asks overpass-api.de, overpass.kumi.systems, maps.mail.ru and overpass.private.coffee in that order, moving on to the next one as soon as one fails or after 4 seconds without an answer (each gets up to 25 seconds), and uses the first good answer. If all fail, it falls back to a simpler Nominatim search (using OSM "special phrase" terms from `nominatimTerms` in `src/data/categories.ts`, one request per term) and says that results may be incomplete. Law offices and party & event rentals have no working Nominatim phrase, so those two categories give a "servers are busy" error instead when Overpass is down. Drywall, ceilings & framing has no phrase either, but it also searches business names (`nameSearchTerms` in `src/data/categories.ts`) with Nominatim inside the search area on every search, because many drywall firms are only tagged as a generic company. Those name results are used on their own when Overpass is down.
 - **OpenStreetMap coverage varies.** Some businesses have no phone, hours or website listed. A missing website in the map data does not always mean the business has none, so check before you pitch.
 - **Chains and franchises** (businesses with a `brand` tag, or the same name 3+ times in the results) are hidden by default so they do not crowd the top of the list. Tick "Show chains" to see them.
-- **Website audits** fetch only the homepage (8 second timeout, 4 at a time). The server connects only to public addresses it has checked itself, and re-checks every redirect. Some sites block automated checks. Those show as "Website not checked" or "review it by hand".
+- **Website audits** fetch the homepage, plus up to two contact or about pages on the same site when the homepage shows no email address (8 seconds in total, 4 sites at a time). Found addresses skip error-tracker, site-builder and placeholder addresses; the business's own domain and inboxes like info@ and contact@ come first. Check a found address before you rely on it. The server connects only to public addresses it has checked itself, and re-checks every redirect. Some sites block automated checks. Those show as "Website not checked" or "review it by hand".
 - **AI pitches** cost a fraction of a cent per lead.
 
 ## Where to edit what
@@ -124,7 +124,7 @@ The **Outreach** tab sends your pitch emails and follow-ups from your own mailbo
 
 ### How it works
 
-1. Save a lead, open it, type an address under **Email for outreach** (OpenStreetMap leads with an email are prefilled) and press **Add to outreach**. Or use **Add all saved leads with an email** on the Outreach tab.
+1. Save a lead, open it, type an address under **Email for outreach** (prefilled with the OpenStreetMap email, or else the one found on their website) and press **Add to outreach**. Or use **Add all saved leads with an email** on the Outreach tab.
 2. The sequence is step 1 (the lead's pitch email from the Pitch panel, sent as written) and up to 2 follow-ups. Edit the follow-up wording and delays under **Sequence**. Follow-ups are sent as replies to the first email.
 3. **Due now** lists every email that is ready. **Send due emails** sends them one by one, waiting the number of seconds you set between emails and stopping at your daily limit. The rest stay due until tomorrow.
 4. **Auto-send while this tab is open** checks every minute and sends what is due. Nothing is sent while the app is closed.
