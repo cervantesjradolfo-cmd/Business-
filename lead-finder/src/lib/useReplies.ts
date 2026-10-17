@@ -2,6 +2,7 @@
 // (which stops their follow-ups), has AI sort each reply and draft an answer, and sends the answer you approve.
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { checkInbox, fetchReplyDraft, sendEmail } from './api'
+import { complianceError, complianceProblems } from './compliance'
 import { buildStepEmail, loadOutreach, mailboxReady, stripFooter } from './outreach'
 import { applyReplyDraft, inboxReady, inboxRequestFor, mergeReplies, replyEmail, updateReply } from './replies'
 import { scoreLead } from './scoring'
@@ -143,6 +144,8 @@ export function useReplies(a: Args) {
     if (!body.trim()) return { ok: false, error: 'The answer needs some text.' }
     if (state.suppressed.includes(r.from)) return { ok: false, error: "This address unsubscribed, so it won't be emailed." }
     const email = replyEmail(r, body, sender)
+    const problems = complianceProblems({ kind: 'reply', to: r.from, subject: email.subject, body: email.body }, sender, state.suppressed)
+    if (problems.length) return { ok: false, error: complianceError(problems) }
     const res = await sendEmail({
       smtp: smtpOf(mailbox),
       from: { name: mailbox.fromName, address: mailbox.fromAddress },
@@ -151,6 +154,7 @@ export function useReplies(a: Args) {
       text: email.body,
       ...(email.inReplyTo ? { inReplyTo: email.inReplyTo } : {}),
       suppressed: state.suppressed,
+      kind: 'reply',
     })
     if (!res.ok) return { ok: false, error: res.error }
     mutate((s) => updateReply(s, replyId, { draft: { body: body.trim(), source: s.replies[replyId]?.draft?.source ?? 'edited' }, handled: { at: new Date().toISOString(), how: 'sent' } }))

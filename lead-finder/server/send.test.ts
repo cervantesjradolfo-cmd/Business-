@@ -8,12 +8,13 @@ const createTransport = vi.fn()
 vi.mock('nodemailer', () => ({ createTransport: (...a: unknown[]) => createTransport(...a) }))
 
 import { POST, GET } from '../api/send'
+import { OPT_OUT_EMAIL } from '../src/lib/pitch'
 
 const PASS = 'hunter2-secret-pw'
 const body = (over: Record<string, unknown> = {}, smtp: Record<string, unknown> = {}) => ({
   smtp: { host: 'smtp.gmail.com', port: 465, secure: true, user: 'me@gmail.com', pass: PASS, ...smtp },
   from: { name: 'Sam', address: 'me@gmail.com' },
-  to: 'owner@acme.example.com', subject: 'Hello', text: 'Body', suppressed: [], ...over,
+  to: 'owner@acme.example.com', subject: 'Hello', text: `Body\n\n${OPT_OUT_EMAIL}`, suppressed: [], ...over,
 })
 const post = (b: unknown, key?: string) =>
   new Request('http://localhost/api/send', {
@@ -48,6 +49,17 @@ afterEach(() => {
 const consoleText = () => JSON.stringify([errSpy.mock.calls, logSpy.mock.calls, warnSpy.mock.calls])
 
 describe('POST /api/send', () => {
+  it('runs the compliance check on the server too, before connecting', async () => {
+    const noOptOut = await POST(post(body({ text: 'Body' })))
+    expect(noOptOut.status).toBe(422)
+    expect(await noOptOut.json()).toMatchObject({ ok: false, code: 'compliance' })
+    const fakeReply = await POST(post(body({ kind: 'first', subject: 'Re: our chat' })))
+    expect(fakeReply.status).toBe(422)
+    expect(createTransport).not.toHaveBeenCalled()
+    expect((await POST(post(body({ kind: 'followup', subject: 'Re: Hello' })))).status).toBe(200)
+    expect((await POST(post(body({ kind: 'test', text: 'Test' })))).status).toBe(200)
+  })
+
   it('sends and returns the message id', async () => {
     const res = await POST(post(body()))
     expect(res.status).toBe(200)

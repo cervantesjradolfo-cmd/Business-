@@ -166,6 +166,7 @@ export function parseSendRequest(body: unknown): Parsed<SendRequest> {
   const rawSup = Array.isArray(body.suppressed) ? body.suppressed : []
   if (rawSup.length > 5000) return fail('Suppression list too long')
   const suppressed = rawSup.filter((v): v is string => typeof v === 'string').map((v) => v.trim().toLowerCase())
+  const kind = body.kind === 'first' || body.kind === 'followup' || body.kind === 'reply' || body.kind === 'test' ? body.kind : undefined
   return {
     ok: true,
     value: {
@@ -176,6 +177,7 @@ export function parseSendRequest(body: unknown): Parsed<SendRequest> {
       text,
       ...(inReplyTo ? { inReplyTo } : {}),
       suppressed,
+      ...(kind ? { kind } : {}),
     },
   }
 }

@@ -4,6 +4,7 @@ import {
   buildStepEmail, canEnroll, dueAt, dueSteps, enrollAll, enrollmentLabel, formatDue, mailboxReady, mailtoHref, recordSent,
   senderReady, sentTodayCount, setDraft, setPending, suppress, unenroll, unknownVariables, OUTREACH_VARIABLES,
 } from '../lib/outreach'
+import { complianceProblems } from '../lib/compliance'
 import { aiDraftFor } from '../lib/outreachAi'
 import { handledReplies, inboxReady, pendingReplies, updateReply } from '../lib/replies'
 import type { RunStatus } from '../lib/useOutreachRunner'
@@ -141,6 +142,12 @@ export default function OutreachTab(p: Props) {
     if (s.status === 'new') p.markContacted(s)
   }
 
+  // What the compliance check finds wrong with this lead's next email ([] = it passes).
+  function problemsFor(e: Enrollment, built: ReturnType<typeof buildStepEmail> | undefined): string[] {
+    if (!built?.ok) return []
+    return complianceProblems({ kind: e.nextStep === 0 ? 'first' : 'followup', to: e.email, subject: built.subject, body: built.body }, sender, state.suppressed)
+  }
+
   function preview(e: Enrollment, s: SavedLead | undefined) {
     if (!s || e.state !== 'active') return null
     const step = e.nextStep
@@ -148,7 +155,7 @@ export default function OutreachTab(p: Props) {
     return (
       <EmailPreview
         key={`${e.leadId}:${step}`}
-        built={built} step={step} sender={sender} hasDraft={!!e.drafts?.[step]} locked={!!e.pendingSend || p.status.running}
+        built={built} step={step} sender={sender} problems={problemsFor(e, built)} hasDraft={!!e.drafts?.[step]} locked={!!e.pendingSend || p.status.running}
         onAi={async () => {
           const draft = await aiDraftFor({ saved: s, enrollment: e, step, sender, profile: p.profile, pitch: p.pitchFor(s), campaign: state.campaign })
           // Only apply it if the lead is still on that step (a send may have finished meanwhile).
@@ -166,6 +173,7 @@ export default function OutreachTab(p: Props) {
     const at = dueAt(e, state.campaign)
     const built = s ? buildStepEmail({ enrollment: e, saved: s, pitch: p.pitchFor(s), campaign: state.campaign, sender }) : undefined
     const total = state.campaign.followUps.length + 1
+    const problems = problemsFor(e, built)
     return (
       <li key={e.leadId} className="space-y-1 rounded-lg border border-slate-200 p-3 text-sm">
         <div className="flex flex-wrap items-baseline justify-between gap-x-3">
@@ -175,6 +183,7 @@ export default function OutreachTab(p: Props) {
         <p className="break-all text-slate-600">{e.email}</p>
         {e.lastError && <p className="text-red-700">{e.lastError}</p>}
         {built && !built.ok && <p className="text-red-700">{built.error}</p>}
+        {problems.length > 0 && <p className="text-red-700">Blocked by the compliance check: {problems.join(' ')}</p>}
         {preview(e, s)}
         {e.pendingSend ? (
           <div className="space-y-1">
@@ -186,12 +195,12 @@ export default function OutreachTab(p: Props) {
           </div>
         ) : !smtp && (
           <div className="flex flex-wrap gap-2">
-            {built?.ok && ready ? (
+            {built?.ok && ready && problems.length === 0 ? (
               <a className={btn} href={mailtoHref(e.email, built.subject, built.body)}>Open in email app</a>
             ) : (
               <button type="button" className={btn} disabled>Open in email app</button>
             )}
-            <button type="button" className={btn} disabled={!built?.ok || !ready} onClick={() => markSent(e)}>Mark as sent</button>
+            <button type="button" className={btn} disabled={!built?.ok || !ready || problems.length > 0} onClick={() => markSent(e)}>Mark as sent</button>
           </div>
         )}
       </li>

@@ -200,8 +200,9 @@ export type SendRequest = {
   text: string
   inReplyTo?: string // "<...>" message id of step 0
   suppressed: string[]
+  kind?: 'first' | 'followup' | 'reply' | 'test' // for the compliance check; missing = followup rules
 }
-export type SendErrorCode = 'invalid' | 'suppressed' | 'host' | 'auth' | 'connection' | 'timeout' | 'rejected' | 'access' | 'unavailable'
+export type SendErrorCode = 'invalid' | 'suppressed' | 'compliance' | 'host' | 'auth' | 'connection' | 'timeout' | 'rejected' | 'access' | 'unavailable'
 export type SendResult = { ok: true; messageId: string } | { ok: false; code: SendErrorCode; error: string }
 
 // ---- Replies (reading the outreach mailbox over IMAP) ----

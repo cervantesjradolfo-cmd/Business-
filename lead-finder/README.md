@@ -165,6 +165,18 @@ Open the **Mailbox** section on the Outreach tab, pick a provider, enter your us
 
 The SMTP password is kept only in this browser. It is sent to your own server with each email, used for that one send, and never stored or logged. The server refuses private and local addresses as mail servers.
 
+### Compliance check
+
+Every email is checked right before it goes out, whether it's sent by Lead Finder, opened in your email app or sent as an answer to a reply. An email that fails isn't sent; the reason shows on its row and in its preview, which also says when it passes. It checks that:
+
+- your name, business and postal address are filled in, and the address is in the email;
+- the opt-out line is in the email;
+- a first email doesn't start its subject with "Re:" or "Fwd:", or say you've already spoken ("as discussed", "following up on our call" and similar);
+- nothing is left over to fill in, such as [Your name] or {{business}};
+- the address hasn't unsubscribed.
+
+The server (`/api/send`) repeats the checks it can make from the email alone, so nothing skips them. The rules are in `src/lib/compliance.ts`.
+
 ### Send safely
 
 - Start small, around 20 emails a day per mailbox, and raise it slowly over a few weeks. Keep the gap between emails at 45 seconds or more.
