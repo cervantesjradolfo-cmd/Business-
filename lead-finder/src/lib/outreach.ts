@@ -10,7 +10,7 @@ import type {
   Campaign, Draft, Enrollment, Mailbox, OutreachEntry, OutreachState, Pitch, SavedLead, Sender, StopReason,
 } from './types'
 
-export const OUTREACH_VARIABLES = ['business', 'sender_name', 'sender_business', 'city'] as const
+export const OUTREACH_VARIABLES = ['business', 'sender_name', 'sender_business', 'city', 'booking_link'] as const
 type Vars = Record<(typeof OUTREACH_VARIABLES)[number], string>
 
 const FOLLOW_UP_1 = 'Hi {{business}} team,\n\nI wanted to follow up on my note below in case it got buried. Would a quick call this week work?'
@@ -116,6 +116,10 @@ export function buildStepEmail(a: {
     sender_name: sender.name.trim(),
     sender_business: sender.business.trim(),
     city: saved.lead.city ?? saved.lead.project?.city ?? 'your area',
+    booking_link: sender.bookingUrl?.trim() ?? '',
+  }
+  if (!vars.booking_link && /\{\{\s*booking_link\s*\}\}/.test(followUp.body)) {
+    return { ok: false, error: 'This follow-up uses {{booking_link}}: add your booking link under Your/Profile details, or take it out of the Sequence.' }
   }
   return {
     ok: true,
@@ -161,7 +165,7 @@ export function canEnroll(s: SavedLead | undefined, state: OutreachState): Enrol
   if (Object.values(state.enrollments).some((e) => e.state !== 'stopped' && e.email === lower)) {
     return { ok: false, reason: 'Another lead in outreach uses this address' }
   }
-  if (s.status === 'replied' || s.status === 'won' || s.status === 'lost') {
+  if (s.status === 'replied' || s.status === 'booked' || s.status === 'won' || s.status === 'lost') {
     return { ok: false, reason: `Lead is marked ${STATUS_LABELS[s.status]}` }
   }
   return { ok: true, email: lower }
@@ -238,7 +242,7 @@ export function syncWithSaved(state: OutreachState, saved: Record<string, SavedL
       const s = saved[e.leadId]
       let reason: StopReason | undefined
       if (!s) reason = 'removed'
-      else if (s.status === 'replied' || s.status === 'won' || s.status === 'lost') reason = s.status
+      else if (s.status === 'replied' || s.status === 'booked' || s.status === 'won' || s.status === 'lost') reason = s.status
       else if (state.suppressed.includes(e.email)) reason = 'unsubscribed'
       if (reason) next = { ...e, state: 'stopped', stopReason: reason }
       else if (e.nextStep > state.campaign.followUps.length) next = { ...e, state: 'finished' }
@@ -328,7 +332,7 @@ const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object
 const clampInt = (v: unknown, min: number, max: number, def: number): number =>
   typeof v === 'number' && Number.isFinite(v) ? Math.min(max, Math.max(min, Math.round(v))) : def
 const isoOrEmpty = (v: unknown): string => (typeof v === 'string' && !Number.isNaN(new Date(v).getTime()) ? v : '')
-const STOP_REASONS: StopReason[] = ['replied', 'won', 'lost', 'removed', 'unsubscribed']
+const STOP_REASONS: StopReason[] = ['replied', 'booked', 'won', 'lost', 'removed', 'unsubscribed']
 
 function loadCampaign(raw: unknown): Campaign {
   if (!isObj(raw) || !Array.isArray(raw.followUps)) return DEFAULT_CAMPAIGN

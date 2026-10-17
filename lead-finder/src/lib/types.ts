@@ -11,7 +11,7 @@ export type GapId =
   | 'no_contact_form' | 'no_chat_widget' | 'no_social_links' | 'missing_seo_tags'
   | 'outdated_copyright' | 'slow_site' | 'no_click_to_call' | 'no_phone_listed' | 'no_hours_listed'
 export type SiteGapId = Exclude<GapId, 'no_website' | 'site_unreachable' | 'no_phone_listed' | 'no_hours_listed'>
-export type LeadStatus = 'new' | 'contacted' | 'replied' | 'won' | 'lost'
+export type LeadStatus = 'new' | 'contacted' | 'replied' | 'booked' | 'won' | 'lost'
 
 export type Lead = {
   id: string // `osm:${osmType}/${osmId}` or `demo:N`
@@ -75,7 +75,10 @@ export type ScoredLead = Lead & {
   dealValue: { min: number; max: number }
 }
 
-export type Sender = { name: string; business: string; email: string; phone: string; address: string; website: string }
+export type Sender = {
+  name: string; business: string; email: string; phone: string; address: string; website: string
+  bookingUrl?: string // a scheduling page (Calendly, Cal.com, Google), offered in answers and follow-ups
+}
 
 // A client profile finds customers for one of your clients and pitches on their behalf.
 // The agency profile (no ClientProfile) is the default: it finds businesses that need your services.
@@ -141,7 +144,7 @@ export type OutreachEntry = {
   via: 'smtp' | 'manual'
   messageId?: string // from SMTP, used for In-Reply-To on follow-ups
 }
-export type StopReason = 'replied' | 'won' | 'lost' | 'removed' | 'unsubscribed'
+export type StopReason = 'replied' | 'booked' | 'won' | 'lost' | 'removed' | 'unsubscribed'
 export type Enrollment = {
   leadId: string
   email: string // lower-cased, snapshot at enrollment
@@ -237,7 +240,7 @@ export type InboxResult = { ok: true; messages: InboxMessage[] } | { ok: false; 
 export type ReplyIntent = 'interested' | 'question' | 'not_now' | 'not_interested' | 'unsubscribe' | 'auto_reply' | 'other'
 export type ReplyRequest = {
   lead: Pick<Lead, 'name' | 'category' | 'city'>
-  sender: Pick<Sender, 'name' | 'business'>
+  sender: Pick<Sender, 'name' | 'business' | 'bookingUrl'>
   services: ServiceId[] // agency profile: the services that were pitched (the server adds their prices)
   offer?: Offer // client profile: what the client does
   ourEmail: { subject: string; body: string } // the last email sent to them, without the footer
@@ -253,5 +256,5 @@ export type Reply = InboxMessage & {
   intent?: ReplyIntent
   summary?: string
   draft?: { body: string; source: 'ai' | 'edited' }
-  handled?: { at: string; how: 'sent' | 'manual' | 'dismissed' | 'auto' }
+  handled?: { at: string; how: 'sent' | 'manual' | 'dismissed' | 'auto' | 'booked' }
 }

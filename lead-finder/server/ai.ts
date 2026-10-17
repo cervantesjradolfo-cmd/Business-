@@ -139,7 +139,7 @@ const REPLY_PROMPT = `A small business owner answered a cold email. You read the
 - intent, one of: interested (wants to talk or know more), question (asks something specific, such as price or how it works), not_now (maybe later), not_interested, unsubscribe (asks not to be emailed), auto_reply (out of office or automatic), other.
 - summary: one short line saying what they want, in plain words.
 - emailBody: the sender's answer, written as the sender. Greet them by name if their reply gives one, otherwise by business name.
-  - interested or question: answer what they asked using only the services, prices and facts given, then suggest one easy next step (a short call this week, or a time that suits them). Prices given are ranges: say what it usually costs and that the exact price depends on what they need.
+  - interested or question: answer what they asked using only the services, prices and facts given, then suggest one easy next step. If sender.bookingUrl is given, offer it as the way to pick a time for a short call (paste the link as given); otherwise suggest a short call this week. Prices given are ranges: say what it usually costs and that the exact price depends on what they need.
   - not_now: thank them, offer to check back later, no pressure.
   - not_interested (including a plain "no thanks", which the cold email told them to send to opt out), unsubscribe or auto_reply: emailBody is an empty string.
   - other: a short, helpful answer that moves the conversation forward.
@@ -175,7 +175,7 @@ export async function aiReply(req: ReplyRequest): Promise<ReplyDraft | null> {
         }
     const parsed = await askJson(REPLY_PROMPT, JSON.stringify({
       recipient: { business: req.lead.name, category: req.lead.category, city: req.lead.city },
-      sender: { name: req.sender.name, business: req.sender.business, ...services },
+      sender: { name: req.sender.name, business: req.sender.business, ...(req.sender.bookingUrl ? { bookingUrl: req.sender.bookingUrl } : {}), ...services },
       ourEmail: req.ourEmail,
       theirReply: req.theirReply,
     }), REPLY_SCHEMA)

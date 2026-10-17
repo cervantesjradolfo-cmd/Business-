@@ -457,6 +457,7 @@ function Workspace({ profile, sender, header, settingsOpen, onOpenSettings }: Wo
             sender={sender} profile={profile} now={now} pitchFor={pitchForSaved} markContacted={markContacted}
             status={runner.status} onRun={runner.runNow} onStop={runner.stop} onAuto={runner.setAuto} onTest={runner.sendTest} replies={replies}
             onOpenLead={(id) => { setTab('saved'); setSelectedId(id) }} onOpenSettings={onOpenSettings} onImport={importLeads}
+            onBooked={(s) => setStatus(s.lead, s.audit, 'booked')}
           />
         )}
 

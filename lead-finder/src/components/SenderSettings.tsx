@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { X } from 'lucide-react'
 import { CATEGORIES } from '../data/categories'
-import { getAccessKey, newProfileId, setAccessKey } from '../lib/storage'
+import { getAccessKey, isBookingUrl, newProfileId, setAccessKey } from '../lib/storage'
 import { cleanKeywords } from '../lib/validate'
 import type { CategoryId, ClientProfile, Sender } from '../lib/types'
 
@@ -24,6 +24,7 @@ const FIELDS: { key: keyof Sender; label: string; clientLabel?: string; type?: s
   { key: 'phone', label: 'Phone', type: 'tel' },
   { key: 'address', label: 'Postal address (required by CAN-SPAM)' },
   { key: 'website', label: 'Website' },
+  { key: 'bookingUrl', label: 'Booking link (Calendly, Cal.com or Google Calendar page, optional)', type: 'url' },
 ]
 
 const TARGETS = CATEGORIES.filter((c) => c.id !== 'any')
@@ -51,6 +52,7 @@ export default function SenderSettings({ sender, draft, takenIds = [], onSave, o
 
   function submit(e: FormEvent) {
     e.preventDefault()
+    if (details.bookingUrl?.trim() && !isBookingUrl(details.bookingUrl)) return setError('The booking link must be a web address starting with https://')
     if (profile) {
       const label = profile.label.trim()
       if (!label) return setError('Give the profile a name.')
@@ -115,7 +117,7 @@ export default function SenderSettings({ sender, draft, takenIds = [], onSave, o
             <label key={f.key} className="block">
               <span className={caption}>{(profile && f.clientLabel) || f.label}</span>
               <input
-                type={f.type ?? 'text'} value={details[f.key]} maxLength={200}
+                type={f.type ?? 'text'} value={details[f.key] ?? ''} maxLength={300}
                 onChange={(e) => setDetails({ ...details, [f.key]: e.target.value })}
                 className={input}
               />

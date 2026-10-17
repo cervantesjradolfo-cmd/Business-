@@ -212,7 +212,7 @@ export function replyEmail(r: Reply, body: string, sender: Sender): { subject: s
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
 const str = (v: unknown, max: number) => (typeof v === 'string' ? v.slice(0, max) : '')
 const iso = (v: unknown) => (typeof v === 'string' && !Number.isNaN(new Date(v).getTime()) ? v : '')
-const HOW = ['sent', 'manual', 'dismissed', 'auto'] as const
+const HOW = ['sent', 'manual', 'dismissed', 'auto', 'booked'] as const
 
 function loadReply(raw: unknown): Reply | null {
   if (!isObj(raw)) return null

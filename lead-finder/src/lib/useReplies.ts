@@ -60,7 +60,7 @@ export function useReplies(a: Args) {
     const lead = scoreLead(s.lead, s.audit)
     return {
       lead: { name: s.lead.name, category: s.lead.category, city: s.lead.city ?? s.lead.project?.city },
-      sender: { name: sender.name, business: sender.business },
+      sender: { name: sender.name, business: sender.business, ...(sender.bookingUrl ? { bookingUrl: sender.bookingUrl } : {}) },
       services: lead.services,
       ...(profile ? { offer: { services: profile.offer, sellingPoints: profile.sellingPoints } } : {}),
       ourEmail: built?.ok

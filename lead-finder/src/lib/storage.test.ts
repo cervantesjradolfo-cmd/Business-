@@ -54,3 +54,14 @@ describe('client profile storage', () => {
     expect(mailboxKey('asher')).toBe('leadfinder:mailbox:asher')
   })
 })
+
+describe('isBookingUrl', () => {
+  it('accepts web addresses only', async () => {
+    const { isBookingUrl } = await import('./storage')
+    expect(isBookingUrl('https://calendly.com/sam/15min')).toBe(true)
+    expect(isBookingUrl(' https://cal.com/sam ')).toBe(true)
+    expect(isBookingUrl('cal.com/sam')).toBe(false)
+    expect(isBookingUrl('javascript:alert(1)')).toBe(false)
+    expect(isBookingUrl('')).toBe(false)
+  })
+})

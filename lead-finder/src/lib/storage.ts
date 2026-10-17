@@ -62,7 +62,7 @@ export function writeJson(key: string, value: unknown): void {
   }
 }
 
-const STATUSES: LeadStatus[] = ['new', 'contacted', 'replied', 'won', 'lost']
+const STATUSES: LeadStatus[] = ['new', 'contacted', 'replied', 'booked', 'won', 'lost']
 
 export function loadSaved(key: string = STORAGE_KEYS.saved): Record<string, SavedLead> {
   const raw = readJson<unknown>(key, {})
@@ -181,10 +181,23 @@ export const EMPTY_SENDER: Sender = { name: '', business: '', email: '', phone: 
 
 const str = (v: unknown) => (typeof v === 'string' ? v : '')
 
+// A web address that can go in an email as a booking link.
+export function isBookingUrl(v: string): boolean {
+  try {
+    const u = new URL(v.trim())
+    return (u.protocol === 'https:' || u.protocol === 'http:') && u.hostname.includes('.') && v.trim().length <= 300
+  } catch {
+    return false
+  }
+}
+
 function toSender(raw: unknown): Sender {
   if (!raw || typeof raw !== 'object') return EMPTY_SENDER
   const r = raw as Partial<Sender>
-  return { name: str(r.name), business: str(r.business), email: str(r.email), phone: str(r.phone), address: str(r.address), website: str(r.website) }
+  return {
+    name: str(r.name), business: str(r.business), email: str(r.email), phone: str(r.phone), address: str(r.address), website: str(r.website),
+    ...(isBookingUrl(str(r.bookingUrl)) ? { bookingUrl: str(r.bookingUrl).trim() } : {}),
+  }
 }
 
 function loadSender(): Sender {

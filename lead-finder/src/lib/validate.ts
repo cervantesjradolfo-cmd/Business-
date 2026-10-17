@@ -242,11 +242,12 @@ export function parseReplyRequest(body: unknown): Parsed<ReplyRequest> {
   const services = (Array.isArray(body.services) ? body.services : []).filter(
     (v): v is ServiceId => typeof v === 'string' && Object.hasOwn(PRICING, v),
   )
+  const bookingUrl = typeof s.bookingUrl === 'string' && /^https?:\/\/[^\s<>"]{3,300}$/.test(s.bookingUrl.trim()) ? s.bookingUrl.trim() : undefined
   return {
     ok: true,
     value: {
       lead: { name, category: optStr(body.lead.category) ?? 'business', city: optStr(body.lead.city) },
-      sender: { name: reqStr(s.name), business: reqStr(s.business) },
+      sender: { name: reqStr(s.name), business: reqStr(s.business), ...(bookingUrl ? { bookingUrl } : {}) },
       services,
       ...(offer ? { offer: { services: optStr(offer.services, 300) ?? '', ...(points ? { sellingPoints: points } : {}) } } : {}),
       ourEmail: { subject: optStr(ours.subject, 300) ?? '', body: typeof ours.body === 'string' ? ours.body.trim().slice(0, 5000) : '' },

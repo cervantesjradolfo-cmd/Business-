@@ -23,8 +23,8 @@ afterEach(() => { window.localStorage.clear() })
 
 describe('templates', () => {
   it('fills known variables and leaves unknown ones', () => {
-    const vars = { business: 'Cafe X', sender_name: 'Sam', sender_business: 'Acme', city: 'Austin' }
-    expect(renderTemplate('Hi {{business}} / {{ city }} / {{nope}}', vars)).toBe('Hi Cafe X / Austin / {{nope}}')
+    const vars = { business: 'Cafe X', sender_name: 'Sam', sender_business: 'Acme', city: 'Austin', booking_link: 'https://cal.com/sam' }
+    expect(renderTemplate('Hi {{business}} / {{ city }} / {{nope}} / {{booking_link}}', vars)).toBe('Hi Cafe X / Austin / {{nope}} / https://cal.com/sam')
     expect(unknownVariables('{{business}} {{ nope }} {{nope}} {{x}}')).toEqual(['nope', 'x'])
   })
   it('prefixes Re: once', () => {
@@ -289,5 +289,19 @@ describe('drafts (AI or edited wording per step)', () => {
     window.localStorage.setItem(key, JSON.stringify({ enrollments: { a: { ...e, drafts: 'nope' } } }))
     expect(loadOutreach(key).enrollments.a).not.toHaveProperty('drafts')
     window.localStorage.removeItem(key)
+  })
+})
+
+describe('booking link in follow-ups', () => {
+  const sender = { name: 'Sam', business: 'Acme Web', email: '', phone: '', address: '1 Main St', website: '' }
+  const saved = { lead: { id: 'a', osmType: 'node' as const, osmId: 1, osmUrl: '', name: 'Cafe X', category: 'Cafe', categoryId: 'cafes' as const, address: '', lat: 0, lon: 0, distanceKm: 1 }, status: 'contacted' as const, notes: '', savedAt: '', updatedAt: '' }
+  const pitch = { email: { subject: 'Hi', body: 'x' }, sms: '', phoneOpener: '', source: 'template' as const }
+  const campaign = { followUps: [{ delayDays: 3, body: 'Pick a time: {{booking_link}}' }] }
+  const enrollment = { leadId: 'a', email: 'a@x.example.com', enrolledAt: '', nextStep: 1, state: 'active' as const, history: [] }
+  it('fills {{booking_link}}, and refuses to send it empty', () => {
+    const ok = buildStepEmail({ enrollment, saved, pitch, campaign, sender: { ...sender, bookingUrl: 'https://cal.com/sam' } })
+    expect(ok.ok && ok.body.startsWith('Pick a time: https://cal.com/sam')).toBe(true)
+    const missing = buildStepEmail({ enrollment, saved, pitch, campaign, sender })
+    expect(missing).toMatchObject({ ok: false, error: expect.stringMatching(/booking link/) })
   })
 })

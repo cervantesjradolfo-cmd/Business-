@@ -42,6 +42,7 @@ type Props = {
   onOpenLead: (id: string) => void
   onOpenSettings: () => void
   onImport: (rows: ImportedRow[], addToOutreach: boolean) => string
+  onBooked: (s: SavedLead) => void // sets the lead to Meeting booked
 }
 
 const btn = 'rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50'
@@ -111,7 +112,7 @@ function SequenceEditor({ campaign, onSave }: { campaign: Campaign; onSave: (c: 
         <button type="button" className={btn} onClick={() => edit({ followUps: [...draft.followUps, { delayDays: 7, body: 'Hi {{business}} team,\n\n' }] })}>Add follow-up</button>
       )}
       <p className="text-xs text-slate-500">
-        Variables: {OUTREACH_VARIABLES.map((v) => `{{${v}}}`).join(' ')}. Your signature and the opt-out line are added automatically.
+        Variables: {OUTREACH_VARIABLES.map((v) => `{{${v}}}`).join(' ')} ({'{{booking_link}}'} is the booking link from your details). Your signature and the opt-out line are added automatically.
         Follow-ups are sent as replies to the first email.
       </p>
       {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
@@ -232,6 +233,12 @@ export default function OutreachTab(p: Props) {
         onCheck={p.replies.checkNow} onDraft={(id) => p.replies.draft(id, true)} onSend={p.replies.send}
         onSaveDraft={(id, body) => p.update((cur) => updateReply(cur, id, { draft: { body, source: 'edited' } }))}
         onHandled={(id, how) => p.update((cur) => updateReply(cur, id, { handled: { at: new Date().toISOString(), how } }))}
+        onBooked={(id) => {
+          const r = state.replies[id]
+          const s = r && saved[r.leadId]
+          if (s) p.onBooked(s)
+          p.update((cur) => updateReply(cur, id, { handled: { at: new Date().toISOString(), how: 'booked' } }))
+        }}
         onOpenLead={p.onOpenLead}
       />
 

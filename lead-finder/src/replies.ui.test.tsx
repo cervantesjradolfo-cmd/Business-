@@ -99,6 +99,21 @@ describe('replies', () => {
     expect(within(panel).getByText('Replies (0)')).toBeTruthy()
   })
 
+  it('adds your booking link to the answer, and Meeting booked sets the lead to booked', async () => {
+    stub({ ai: false })
+    window.localStorage.setItem('leadfinder:sender', JSON.stringify({ name: 'Sam', business: 'Acme Web', email: 'sam@acme.example.com', phone: '', address: '1 Main St, Austin TX', website: '', bookingUrl: 'https://cal.com/sam' }))
+    const user = userEvent.setup()
+    const panel = await checkReplies(user)
+    await user.type(within(panel).getByPlaceholderText('Write your answer'), 'Hi Pat, happy to chat.')
+    await user.click(within(panel).getByRole('button', { name: 'Add booking link' }))
+    expect((within(panel).getByPlaceholderText('Write your answer') as HTMLTextAreaElement).value)
+      .toBe('Hi Pat, happy to chat.\n\nYou can pick a time that suits you here: https://cal.com/sam')
+    expect(within(panel).queryByRole('button', { name: 'Add booking link' })).toBeNull()
+    await user.click(within(panel).getByRole('button', { name: 'Meeting booked' }))
+    expect(within(panel).getByText('Replies (0)')).toBeTruthy()
+    expect(JSON.parse(window.localStorage.getItem('leadfinder:saved')!)[LEAD.id].status).toBe('booked')
+  })
+
   it('unsubscribes a "no thanks" reply without asking you', async () => {
     stub({ ai: true, messages: [{ ...MESSAGE, text: 'No thanks.' }] })
     const user = userEvent.setup()

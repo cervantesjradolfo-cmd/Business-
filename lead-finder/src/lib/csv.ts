@@ -18,6 +18,7 @@ export const STATUS_LABELS: Record<LeadStatus, string> = {
   new: 'New',
   contacted: 'Contacted',
   replied: 'Replied',
+  booked: 'Meeting booked',
   won: 'Won',
   lost: 'Lost',
 }

@@ -19,6 +19,7 @@ type Props = {
   onSend: (id: string, body: string) => Promise<{ ok: boolean; error?: string }>
   onSaveDraft: (id: string, body: string) => void
   onHandled: (id: string, how: 'manual' | 'dismissed') => void
+  onBooked: (id: string) => void // they booked a meeting: the lead becomes Meeting booked
   onOpenLead: (id: string) => void
 }
 
@@ -35,7 +36,7 @@ const INTENT_STYLES: Record<ReplyIntent, string> = {
   auto_reply: 'bg-slate-100 text-slate-600 ring-slate-200',
   other: 'bg-slate-100 text-slate-700 ring-slate-200',
 }
-const HOW_LABELS = { sent: 'Answered', manual: 'Answered outside Lead Finder', dismissed: 'No answer needed', auto: 'Handled automatically' } as const
+const HOW_LABELS = { sent: 'Answered', manual: 'Answered outside Lead Finder', dismissed: 'No answer needed', auto: 'Handled automatically', booked: 'Meeting booked' } as const
 
 function IntentBadge({ intent }: { intent?: ReplyIntent }) {
   if (!intent) return null
@@ -113,6 +114,10 @@ function ReplyCard({ r, p }: { r: Reply; p: Props }) {
           {r.draft?.source === 'ai' ? 'Rewrite with AI' : 'Write with AI'}
         </button>
         {body.trim() ? <a className={btn} href={mailtoHref(r.from, email.subject, email.body)}>Open in email app</a> : <button type="button" className={btn} disabled>Open in email app</button>}
+        {p.sender.bookingUrl && !body.includes(p.sender.bookingUrl) && (
+          <button type="button" className={btn} disabled={!!busy} onClick={() => setBody(`${body.trimEnd()}${body.trim() ? '\n\n' : ''}You can pick a time that suits you here: ${p.sender.bookingUrl}`)}>Add booking link</button>
+        )}
+        <button type="button" className={btn} disabled={!!busy} onClick={() => p.onBooked(r.id)}>Meeting booked</button>
         <button type="button" className={btn} disabled={!!busy} onClick={() => p.onHandled(r.id, 'manual')}>Mark as answered</button>
         <button type="button" className={btn} disabled={!!busy} onClick={() => p.onHandled(r.id, 'dismissed')}>No answer needed</button>
       </div>
