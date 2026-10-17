@@ -3,6 +3,7 @@
 // can't be pointed at other servers. Errors are fixed messages: no token or response body is returned.
 import type { AlertRequest, CrmLead, CrmResult, Integrations } from '../src/lib/types.js'
 import { fetchWithTimeout } from './http.js'
+import { placesKey } from './reviews.js'
 
 const env = (k: string) => (process.env[k] ?? '').trim()
 const TIMEOUT_MS = 10_000
@@ -13,6 +14,7 @@ export function integrations(): Integrations {
     webhook: /^https:\/\//.test(env('ALERT_WEBHOOK_URL')),
     hubspot: !!env('HUBSPOT_TOKEN'),
     ghl: !!env('GHL_TOKEN') && !!env('GHL_LOCATION_ID'),
+    places: !!placesKey(),
   }
 }
 

@@ -1,6 +1,7 @@
 // Website audit: fetches a homepage safely (no private addresses, bounded time and size).
 import { contactPageLinks, extractEmails } from '../src/lib/emails.js'
 import { detectSiteGaps } from '../src/lib/gaps.js'
+import { detectSignals } from '../src/lib/heat.js'
 import { normalizeWebsite } from '../src/lib/url.js'
 import type { AuditResult } from '../src/lib/types.js'
 import { contactEmail } from './http.js'
@@ -125,8 +126,12 @@ export async function auditWebsite(id: string, website: string, now: Date = new 
           const elapsedMs = Date.now() - started
           const finalUrl = url.toString()
           const { gaps, detail } = detectSiteGaps(html, { finalUrl, elapsedMs, now })
+          const signals = detectSignals(html)
           const emails = html ? await findEmails(html, finalUrl, deadline) : []
-          return { id, status: 'ok', finalUrl, httpStatus: status, elapsedMs, gaps, detail, ...(emails.length ? { emails } : {}), checkedAt }
+          return {
+            id, status: 'ok', finalUrl, httpStatus: status, elapsedMs, gaps, detail,
+            ...(emails.length ? { emails } : {}), ...(signals.length ? { signals } : {}), checkedAt,
+          }
         }
         res.body?.cancel().catch(() => {})
         const cloudflare = !!res.headers.get('cf-ray') || /cloudflare/i.test(res.headers.get('server') ?? '')

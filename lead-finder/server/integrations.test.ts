@@ -5,7 +5,7 @@ import { POST as crmPOST } from '../api/crm'
 import { POST as notifyPOST } from '../api/notify'
 import { GET as integrationsGET } from '../api/integrations'
 
-const KEYS = ['SLACK_WEBHOOK_URL', 'ALERT_WEBHOOK_URL', 'HUBSPOT_TOKEN', 'GHL_TOKEN', 'GHL_LOCATION_ID', 'APP_ACCESS_KEY']
+const KEYS = ['SLACK_WEBHOOK_URL', 'ALERT_WEBHOOK_URL', 'HUBSPOT_TOKEN', 'GHL_TOKEN', 'GHL_LOCATION_ID', 'GOOGLE_PLACES_API_KEY', 'APP_ACCESS_KEY']
 const saved: Record<string, string | undefined> = {}
 let calls: { url: string; init: RequestInit; body: any }[]
 
@@ -27,12 +27,12 @@ const lead = { name: 'Corner Cafe', email: 'owner@corner.example.com', phone: '5
 
 describe('integrations', () => {
   it('reports only what is set up, never the secrets', async () => {
-    expect(integrations()).toEqual({ slack: false, webhook: false, hubspot: false, ghl: false })
+    expect(integrations()).toEqual({ slack: false, webhook: false, hubspot: false, ghl: false, places: false })
     process.env.SLACK_WEBHOOK_URL = 'https://hooks.slack.com/services/T/B/x'
     process.env.ALERT_WEBHOOK_URL = 'http://insecure.example.com/hook' // https only
     process.env.HUBSPOT_TOKEN = 'pat-secret'
     process.env.GHL_TOKEN = 'ghl-secret' // needs the location id too
-    expect(integrations()).toEqual({ slack: true, webhook: false, hubspot: true, ghl: false })
+    expect(integrations()).toEqual({ slack: true, webhook: false, hubspot: true, ghl: false, places: false })
     const text = await (await integrationsGET(new Request('http://localhost/api/integrations'))).text()
     expect(text).not.toContain('secret')
   })

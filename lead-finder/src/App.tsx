@@ -2,11 +2,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { SearchX, Target, Bookmark } from 'lucide-react'
 import clsx from 'clsx'
 import { DEMO_AUDITS, DEMO_LEADS } from './data/demo'
-import { ApiUnavailableError, auditLeads, fetchIntegrations, fetchPitch, searchLeads, searchProjects, sendAlert } from './lib/api'
+import { ApiUnavailableError, auditLeads, fetchIntegrations, fetchPitch, fetchReviews, searchLeads, searchProjects, sendAlert } from './lib/api'
 import { sendToCrm } from './lib/crm'
 import { INTENT_LABELS } from './lib/replies'
 import { csvFilename, leadsToCsv } from './lib/csv'
-import { applyFilters, sortByContact, sortLeads } from './lib/filters'
+import { applyFilters, sortByContact, sortByHeat, sortLeads } from './lib/filters'
 import { toLead } from './lib/format'
 import type { ImportedRow } from './lib/csvImport'
 import { canEnroll, dueSteps, enroll, enrollmentLabel, loadOutreach, outreachEmailFor, suppress, syncWithSaved } from './lib/outreach'
@@ -114,7 +114,11 @@ function Workspace({ profile, sender, header, settingsOpen, onOpenSettings }: Wo
   const requested = useRef<Set<string>>(new Set())
 
   // ---- lists ----
-  const resultScored = useMemo(() => leads.map((l) => scoreLead(l, audits[l.id], pending.has(l.id))), [leads, audits, pending])
+  // A result you checked reviews for (and so saved) shows them too.
+  const resultScored = useMemo(() => leads.map((l) => {
+    const reviews = saved[l.id]?.lead.reviews
+    return scoreLead(reviews ? { ...l, reviews } : l, audits[l.id], pending.has(l.id))
+  }), [leads, audits, pending, saved])
   const savedScored = useMemo(() => Object.values(saved).map((s) => scoreLead(s.lead, s.audit)), [saved])
   const allScored = tab === 'results' ? resultScored : savedScored // the Outreach tab lists saved leads too
   // Chains are hidden by default in results; leads the user saved are always listed.
@@ -122,7 +126,8 @@ function Workspace({ profile, sender, header, settingsOpen, onOpenSettings }: Wo
   const visible = useMemo(() => {
     const f = { ...filters, ...(tab === 'saved' ? { showChains: true } : {}), ...(client ? { minScore: 0, noWebsiteOnly: false } : {}) }
     const list = applyFilters(allScored, f)
-    return client ? sortByContact(list) : sortLeads(list)
+    const sorted = client ? sortByContact(list) : sortLeads(list)
+    return filters.sortByHeat ? sortByHeat(sorted) : sorted
   }, [allScored, filters, tab, client])
   const chainCount = useMemo(() => allScored.filter((l) => l.isChain).length, [allScored])
   const selected = selectedId ? allScored.find((l) => l.id === selectedId) : undefined
@@ -318,7 +323,7 @@ function Workspace({ profile, sender, header, settingsOpen, onOpenSettings }: Wo
     outreach, outreachKey: outreachStoreKey, saved, mailbox, sender, profile, pitchFor: pitchForSaved, markContacted,
   })
   // Alerts and CRM sync, when set up on the server.
-  const [integrations, setIntegrations] = useState<Integrations>({ slack: false, webhook: false, hubspot: false, ghl: false })
+  const [integrations, setIntegrations] = useState<Integrations>({ slack: false, webhook: false, hubspot: false, ghl: false, places: false })
   useEffect(() => {
     const ctrl = new AbortController()
     void fetchIntegrations(ctrl.signal).then((i) => { if (!ctrl.signal.aborted) setIntegrations(i) })
@@ -526,6 +531,13 @@ function Workspace({ profile, sender, header, settingsOpen, onOpenSettings }: Wo
                 onRegenerate={regenerate}
                 onOpenSettings={onOpenSettings}
                 {...outreachProps}
+                {...(integrations.places && !selected.isDemo ? {
+                  onCheckReviews: async () => {
+                    const { name, address, city, lat, lon } = selected
+                    const reviews = await fetchReviews({ name, address, ...(city ? { city } : {}), lat, lon })
+                    save({ ...toLead(selected), reviews }, selected.audit)
+                  },
+                } : {})}
               />
             ) : (
               'Select a lead to see details'

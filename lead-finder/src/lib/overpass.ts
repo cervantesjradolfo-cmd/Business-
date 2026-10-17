@@ -1,5 +1,6 @@
 import { CATEGORIES, getCategory } from '../data/categories.js'
 import { distanceKm, osmUrl } from './geo.js'
+import { parseStartDate } from './heat.js'
 import type { CategoryId, Lead } from './types.js'
 
 export const OVERPASS_MIRRORS = [
@@ -121,6 +122,7 @@ export function parseOverpass(json: unknown, center: { lat: number; lon: number 
       city,
       ...pickContact(tags),
       ...pickBrand(tags),
+      ...(parseStartDate(tags.start_date ?? tags.opening_date) ? { startDate: parseStartDate(tags.start_date ?? tags.opening_date) } : {}),
       lat,
       lon,
       distanceKm: Math.round(distanceKm(center, { lat, lon }) * 100) / 100,

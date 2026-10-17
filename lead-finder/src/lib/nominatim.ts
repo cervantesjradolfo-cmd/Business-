@@ -1,4 +1,5 @@
 import { distanceKm, osmUrl } from './geo.js'
+import { parseStartDate } from './heat.js'
 import { detectCategory, pickBrand, pickContact } from './overpass.js'
 import type { Lead } from './types.js'
 
@@ -92,6 +93,7 @@ export function parseNominatimSearch(json: unknown, center: { lat: number; lon: 
       city: city || undefined,
       ...pickContact(extra),
       ...pickBrand(extra),
+      ...(parseStartDate(extra.start_date ?? extra.opening_date) ? { startDate: parseStartDate(extra.start_date ?? extra.opening_date) } : {}),
       lat,
       lon,
       distanceKm: Math.round(dist * 100) / 100,

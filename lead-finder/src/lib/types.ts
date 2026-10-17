@@ -36,6 +36,8 @@ export type Lead = {
   isChain?: boolean // brand tagged, or the same name appears 3+ times in the results
   isDemo?: boolean
   imported?: boolean // came from a CSV import: no map position or distance
+  startDate?: string // OSM start_date / opening_date (YYYY, YYYY-MM or YYYY-MM-DD)
+  reviews?: Reviews // from Google, when checked
   project?: Project // set for leads from building permits: the lead is the job's general contractor
 }
 
@@ -51,6 +53,8 @@ export type Project = {
   architect?: string
 }
 
+export type Reviews = { rating?: number; count?: number; mapsUrl?: string; checkedAt: string }
+export type AuditSignal = 'hiring' | 'new_opening' | 'placeholder_site'
 export type AuditStatus = 'ok' | 'unreachable' | 'limited' | 'skipped'
 export type AuditResult = {
   id: string
@@ -62,6 +66,7 @@ export type AuditResult = {
   detail?: Partial<Record<SiteGapId, string>>
   note?: string
   emails?: string[] // addresses found on the homepage or contact page, best first
+  signals?: AuditSignal[] // signs it's a good moment to reach out, read from the homepage
   checkedAt: string // ISO
 }
 
@@ -73,6 +78,8 @@ export type ScoredLead = Lead & {
   score: number // 0..100 integer
   services: ServiceId[]
   dealValue: { min: number; max: number }
+  heat: number // 1..5, how good a moment it is to reach out (see heat.ts)
+  heatReasons: { label: string; points: number }[]
 }
 
 export type Sender = {
@@ -109,7 +116,11 @@ export type SavedLead = {
   savedAt: string
   updatedAt: string
 }
-export type Filters = { minScore: number; noWebsiteOnly: boolean; hasPhone: boolean; showChains: boolean }
+export type Filters = {
+  minScore: number; noWebsiteOnly: boolean; hasPhone: boolean; showChains: boolean
+  hotOnly?: boolean // only heat 4 and 5
+  sortByHeat?: boolean // hottest first instead of best score first
+}
 
 // API contracts (all JSON; errors are { error: string } with 4xx/5xx)
 export type SearchRequest = { location: string; category: CategoryId; radiusKm: number; limit: number }
@@ -260,7 +271,8 @@ export type Reply = InboxMessage & {
 }
 
 // ---- Alerts and CRM sync (set up with environment variables on the server) ----
-export type Integrations = { slack: boolean; webhook: boolean; hubspot: boolean; ghl: boolean }
+export type Integrations = { slack: boolean; webhook: boolean; hubspot: boolean; ghl: boolean; places: boolean }
+export type ReviewsRequest = { name: string; address?: string; city?: string; lat?: number; lon?: number }
 export type AlertRequest = {
   event: 'reply' | 'booked'
   lead: { name: string; email?: string; phone?: string; website?: string; city?: string }

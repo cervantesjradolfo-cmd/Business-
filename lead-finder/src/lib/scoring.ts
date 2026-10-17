@@ -1,5 +1,6 @@
 import { PRICING } from '../data/pricing'
 import { GAP_DEFS, listingGaps } from './gaps'
+import { heatFor } from './heat'
 import type { AuditResult, Gap, GapId, Lead, ScoredLead, ServiceId } from './types'
 
 export function recommendServices(gaps: GapId[]): ServiceId[] {
@@ -36,6 +37,7 @@ export function scoreLead(lead: Lead, audit?: AuditResult, pending = false): Sco
     .sort((a, b) => b.weight - a.weight)
   const score = Math.min(100, gaps.reduce((n, g) => n + g.weight, 0))
   const services = recommendServices(ids)
+  const { heat, reasons } = heatFor({ ...lead, audit, gaps })
   return {
     ...lead,
     audit,
@@ -44,5 +46,7 @@ export function scoreLead(lead: Lead, audit?: AuditResult, pending = false): Sco
     score,
     services,
     dealValue: dealValue(services),
+    heat,
+    heatReasons: reasons,
   }
 }

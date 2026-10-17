@@ -1,7 +1,7 @@
 import { PRICING } from '../data/pricing.js'
 import { getCategory } from '../data/categories.js'
 import { GAP_DEFS } from './gaps.js'
-import type { AlertRequest, AuditRequest, CrmLead, FollowUpRequest, GapId, InboxRequest, Offer, PitchRequest, ProjectsRequest, ReplyRequest, SearchRequest, SendRequest, Sender, ServiceId, CategoryId } from './types.js'
+import type { AlertRequest, AuditRequest, CrmLead, ReviewsRequest, FollowUpRequest, GapId, InboxRequest, Offer, PitchRequest, ProjectsRequest, ReplyRequest, SearchRequest, SendRequest, Sender, ServiceId, CategoryId } from './types.js'
 
 export type Parsed<T> = { ok: true; value: T } | { ok: false; error: string }
 const fail = (error: string): { ok: false; error: string } => ({ ok: false, error })
@@ -315,4 +315,22 @@ export function parseCrmRequest(body: unknown): Parsed<CrmLead[]> {
     })
   }
   return { ok: true, value: out }
+}
+
+export function parseReviewsRequest(body: unknown): Parsed<ReviewsRequest> {
+  if (!isObj(body)) return fail('Invalid request')
+  const name = line(body.name)
+  if (!name) return fail('Business name is required')
+  const num = (v: unknown, lim: number) => (typeof v === 'number' && Number.isFinite(v) && Math.abs(v) <= lim ? v : undefined)
+  const lat = num(body.lat, 90)
+  const lon = num(body.lon, 180)
+  return {
+    ok: true,
+    value: {
+      name,
+      ...(line(body.address, 300) ? { address: line(body.address, 300) } : {}),
+      ...(line(body.city, 100) ? { city: line(body.city, 100) } : {}),
+      ...(lat !== undefined && lon !== undefined ? { lat, lon } : {}),
+    },
+  }
 }

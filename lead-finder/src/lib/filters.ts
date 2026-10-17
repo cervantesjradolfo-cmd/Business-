@@ -1,3 +1,4 @@
+import { HOT_HEAT } from './heat'
 import type { Filters, Lead, ScoredLead } from './types'
 
 // How many ways there are to reach a business: phone, email (listed or found on their website), website.
@@ -17,6 +18,11 @@ export function sortByContact(leads: ScoredLead[]): ScoredLead[] {
   )
 }
 
+// Hottest first, keeping the given order among leads with the same heat.
+export function sortByHeat(leads: ScoredLead[]): ScoredLead[] {
+  return leads.map((l, i) => ({ l, i })).sort((a, b) => b.l.heat - a.l.heat || a.i - b.i).map((x) => x.l)
+}
+
 export function sortLeads(leads: ScoredLead[]): ScoredLead[] {
   return [...leads].sort(
     (a, b) => b.score - a.score || a.distanceKm - b.distanceKm || a.name.localeCompare(b.name),
@@ -29,6 +35,7 @@ export function applyFilters(leads: ScoredLead[], f: Filters): ScoredLead[] {
       l.score >= f.minScore &&
       (f.showChains || !l.isChain) &&
       (!f.noWebsiteOnly || l.gaps.some((g) => g.id === 'no_website')) &&
-      (!f.hasPhone || !!l.phone?.trim()),
+      (!f.hasPhone || !!l.phone?.trim()) &&
+      (!f.hotOnly || l.heat >= HOT_HEAT),
   )
 }

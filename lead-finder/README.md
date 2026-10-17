@@ -50,6 +50,27 @@ signed-out request is refused. It needs these environment variables:
 
 Re-run it after code changes to redeploy. Enter the access key in the app under "Your details".
 
+## Heat: who to contact now
+
+The score says how much a business needs what you sell. **Heat** (1 to 5, shown as "Heat 4" on a card) says whether something is happening right now that makes it a good moment to reach out. The lead panel's **Why now** section lists the reasons:
+
+| Signal | Points |
+|---|---|
+| Building permit issued in the last 14 days (Active projects) | 3 |
+| Permit issued 15 to 45 days ago | 2 |
+| Reported job cost $250,000 or more | 1 |
+| Their website says they're hiring | 2 |
+| Their website says they've just opened or open soon | 2 |
+| Their website is a "coming soon" or placeholder page | 2 |
+| Opened in the last year (OpenStreetMap `start_date` or `opening_date`) | 2 |
+| Website is down or broken | 2 |
+| Google rating under 4.0 from 5 or more reviews | 2 |
+| Fewer than 15 Google reviews | 1 |
+
+Heat is 1 plus the points, up to 5. Use **Heat 4+ only** and **Hottest first** in the filters to work the hottest leads first.
+
+**Google reviews (optional):** set `GOOGLE_PLACES_API_KEY` (a Google Cloud key with the Places API (New) enabled) and the lead panel gets **Check Google reviews**. It looks up that one business's rating and review count, saves the lead with them and updates its heat. Google bills each lookup, so it only runs when you press the button.
+
 ## Search many places at once
 
 Business searches have **One place** and **Many places**. With **Many places**, type or paste places one per line (cities, ZIP codes or addresses), or use **Fill with** to load the 50 largest US cities or a state's biggest cities (`src/data/places.ts`). The app searches each place in turn with the same category, radius and **Max per place**, adds new leads to one list (a business found from two places is listed once) and checks their websites as it goes. A place that can't be searched is skipped and named at the end. **Stop** ends the run and keeps what was found. Each place takes about 5 to 30 seconds, so keep the tab open for long lists (up to 100 places).
@@ -107,6 +128,7 @@ The tokens and webhook addresses stay on the server (`GET /api/integrations` onl
 | `SOCRATA_APP_TOKEN` | Optional. An app token for the Chicago data portal, used by Active projects. Only needed if permit searches get throttled. |
 | `VITE_API_BASE` | Optional. Front-end only. Points the app at an API on another origin. |
 | `SLACK_WEBHOOK_URL`, `ALERT_WEBHOOK_URL`, `HUBSPOT_TOKEN`, `GHL_TOKEN`, `GHL_LOCATION_ID` | Optional. Alerts and CRM sync, see "Alerts and CRM sync". |
+| `GOOGLE_PLACES_API_KEY` | Optional. Turns on **Check Google reviews** in the lead panel, see "Heat". |
 
 ## Protect your deployment
 

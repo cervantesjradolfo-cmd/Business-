@@ -147,6 +147,10 @@ describe('auditWebsite', () => {
     expect(r.emails).toBeUndefined()
     expect(seen).toEqual(['https://shop.example.org/'])
   })
+  it('reads buying signals from the homepage', async () => {
+    stubNet(() => page('<html><body><p>Now hiring servers!</p><a href="mailto:jobs@shop.example.org">x</a></body></html>'))
+    expect((await auditWebsite('a', 'https://shop.example.org')).signals).toEqual(['hiring'])
+  })
   it('falls back to http and reports no_https', async () => {
     stubNet((url) => (url.startsWith('https:') ? new Error('tls') : page('<html></html>')))
     const r = await auditWebsite('a', 'example.com')
