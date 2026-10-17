@@ -5,7 +5,7 @@ import { emailFooter } from '../src/lib/pitch'
 import type { BackgroundLead, Mailbox, OutreachState, ReplyRequest, SavedLead, SendRequest } from '../src/lib/types'
 import { runAll, runWorkspace, statusOf, syncWorkspace, disableWorkspace, type RunDeps } from './background'
 import { POST as backgroundPOST } from '../api/background'
-import { GET as cronGET } from '../api/cron'
+import { GET as cronGET } from '../api/background'
 
 // An in-memory Upstash: answers the REST commands the app uses.
 let store: Map<string, string>
@@ -157,10 +157,10 @@ describe('the scheduled run', () => {
 
 describe('endpoints', () => {
   const post = (body: unknown, key?: string) => backgroundPOST(new Request('http://localhost/api/background', { method: 'POST', headers: key ? { 'x-access-key': key } : {}, body: JSON.stringify(body) }))
-  it('/api/cron needs CRON_SECRET', async () => {
-    expect((await cronGET(new Request('http://localhost/api/cron'))).status).toBe(401)
-    expect((await cronGET(new Request('http://localhost/api/cron', { headers: { authorization: 'Bearer wrong' } }))).status).toBe(401)
-    const ok = await cronGET(new Request('http://localhost/api/cron', { headers: { authorization: `Bearer ${'c'.repeat(20)}` } }))
+  it('GET /api/background (the scheduled run) needs CRON_SECRET', async () => {
+    expect((await cronGET(new Request('http://localhost/api/background'))).status).toBe(401)
+    expect((await cronGET(new Request('http://localhost/api/background', { headers: { authorization: 'Bearer wrong' } }))).status).toBe(401)
+    const ok = await cronGET(new Request('http://localhost/api/background', { headers: { authorization: `Bearer ${'c'.repeat(20)}` } }))
     expect(ok.status).toBe(200)
     expect(await ok.json()).toEqual({ ran: [] })
   })

@@ -1,9 +1,9 @@
 // @vitest-environment node
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { alertText, integrations, sendAlert, syncCrm } from './integrations'
-import { POST as crmPOST } from '../api/crm'
-import { POST as notifyPOST } from '../api/notify'
-import { GET as integrationsGET } from '../api/integrations'
+import { GET as integrationsGET, POST as integrationsPOST } from '../api/integrations'
+const crmPOST = integrationsPOST
+const notifyPOST = integrationsPOST
 
 const KEYS = ['SLACK_WEBHOOK_URL', 'ALERT_WEBHOOK_URL', 'HUBSPOT_TOKEN', 'GHL_TOKEN', 'GHL_LOCATION_ID', 'GOOGLE_PLACES_API_KEY', 'APP_ACCESS_KEY']
 const saved: Record<string, string | undefined> = {}
@@ -22,7 +22,7 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-const req = (path: string, body: unknown) => new Request(`http://localhost/api/${path}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })
+const req = (op: string, body: unknown) => new Request(`http://localhost/api/integrations?op=${op}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })
 const lead = { name: 'Corner Cafe', email: 'owner@corner.example.com', phone: '555-0100', website: 'cornercafe.example.com', city: 'Austin', status: 'replied' as const }
 
 describe('integrations', () => {
@@ -87,7 +87,7 @@ describe('CRM sync', () => {
     expect(r.hubspot?.error).toMatch(/refused the token/)
     expect(JSON.stringify(r)).not.toContain('pat-secret')
   })
-  it('POST /api/crm needs a CRM set up and valid leads', async () => {
+  it('POST /api/integrations?op=crm needs a CRM set up and valid leads', async () => {
     expect((await crmPOST(req('crm', { leads: [lead] }))).status).toBe(400)
     process.env.HUBSPOT_TOKEN = 'pat-secret'
     expect((await crmPOST(req('crm', { leads: [] }))).status).toBe(400)

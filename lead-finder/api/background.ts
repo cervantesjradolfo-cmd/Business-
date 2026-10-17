@@ -1,9 +1,11 @@
+// GET /api/background: the scheduled run (Vercel Cron, or any scheduler sending CRON_SECRET), see GET below.
 // POST /api/background: background mode for one profile.
 //   { action: 'status', workspace }            is it set up on the server, is it on, last run
 //   { action: 'sync', workspace, ...snapshot }  turn on / keep in step: merges your copy with the server's
 //   { action: 'run', workspace }               run it now (check replies, send what is due)
 //   { action: 'disable', workspace }           turn off: the server's copy and stored password are deleted
-import { backgroundAvailable, disableWorkspace, runWorkspace, statusOf, syncWorkspace, validWorkspaceId } from '../server/background.js'
+import { timingSafeEqual } from 'node:crypto'
+import { backgroundAvailable, disableWorkspace, runAll, runWorkspace, statusOf, syncWorkspace, validWorkspaceId } from '../server/background.js'
 import { parseSyncRequest } from '../server/backgroundRequest.js'
 import { checkAccess, json } from '../server/http.js'
 import { KvError } from '../server/kv.js'
@@ -47,6 +49,23 @@ export async function POST(request: Request): Promise<Response> {
   }
 }
 
-export async function GET(): Promise<Response> {
-  return json({ error: 'Use POST' }, 405)
+// The scheduled run: checks replies and sends due emails for every profile in background mode.
+// Needs CRON_SECRET: Vercel Cron sends it as "Authorization: Bearer <secret>", and so must any other
+// scheduler (for example cron-job.org every 5 minutes).
+function cronAuthorized(request: Request): boolean {
+  const secret = (process.env.CRON_SECRET ?? '').trim()
+  if (secret.length < 16) return false
+  const a = Buffer.from(request.headers.get('authorization') ?? '')
+  const b = Buffer.from(`Bearer ${secret}`)
+  return a.length === b.length && timingSafeEqual(a, b)
+}
+
+export async function GET(request: Request): Promise<Response> {
+  if (!cronAuthorized(request)) return json({ error: 'Unauthorized' }, 401)
+  if (!backgroundAvailable()) return json({ ran: [], note: 'Background mode is not set up' })
+  try {
+    return json({ ran: await runAll(Date.now() + 50_000) })
+  } catch {
+    return json({ error: 'Run failed' }, 500)
+  }
 }

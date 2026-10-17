@@ -154,17 +154,17 @@ export async function fetchIntegrations(signal?: AbortSignal): Promise<Integrati
 // Fire-and-forget alert; never throws.
 export async function sendAlert(req: AlertRequest): Promise<void> {
   try {
-    await post('notify', req)
+    await post('integrations?op=notify', req)
   } catch {
     // alerts are best effort
   }
 }
 
 export async function syncCrm(leads: CrmLead[], signal?: AbortSignal): Promise<CrmResult> {
-  return post<CrmResult>('crm', { leads }, signal)
+  return post<CrmResult>('integrations?op=crm', { leads }, signal)
 }
 
 export async function fetchReviews(req: ReviewsRequest, signal?: AbortSignal): Promise<Reviews> {
-  const data = await post<{ reviews: Reviews }>('reviews', req, signal)
+  const data = await post<{ reviews: Reviews }>('integrations?op=reviews', req, signal)
   return data.reviews
 }

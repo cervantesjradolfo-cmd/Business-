@@ -24,7 +24,7 @@ beforeEach(() => {
     if (url.endsWith('/api/audit')) {
       return jsonRes({ results: body.leads.map((l: { id: string }) => ({ id: l.id, status: 'ok', gaps: [], checkedAt: '2026-10-01T00:00:00Z', ...(l.id === HIRING.id ? { signals: ['hiring', 'new_opening'] } : {}) })) })
     }
-    if (url.endsWith('/api/reviews')) return jsonRes({ reviews: { rating: 3.6, count: 40, checkedAt: '2026-10-17T00:00:00Z' } })
+    if (url.endsWith('/api/integrations?op=reviews')) return jsonRes({ reviews: { rating: 3.6, count: 40, checkedAt: '2026-10-17T00:00:00Z' } })
     return new Response('nope', { status: 500 })
   }))
 })
@@ -53,7 +53,7 @@ describe('heat', () => {
     await user.click(within(calm).getByRole('button', { name: 'Check Google reviews' }))
     expect(await within(calm).findByText(/3\.6 on Google from 40 reviews/)).toBeTruthy()
     expect(within(calm).getByText('Heat 3 of 5')).toBeTruthy()
-    expect(calls.find((c) => c.path.endsWith('/api/reviews'))!.body).toEqual({ name: 'Calm Cafe', address: '1 Main St', lat: 1, lon: 1 })
+    expect(calls.find((c) => c.path.endsWith('/api/integrations?op=reviews'))!.body).toEqual({ name: 'Calm Cafe', address: '1 Main St', lat: 1, lon: 1 })
     // Checking reviews saves the lead, with the reviews.
     expect(JSON.parse(window.localStorage.getItem('leadfinder:saved')!)[CALM.id].lead.reviews).toMatchObject({ rating: 3.6, count: 40 })
   })

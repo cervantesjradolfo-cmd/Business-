@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { lookupReviews } from './reviews'
-import { POST } from '../api/reviews'
+import { POST } from '../api/integrations'
 
 let calls: { url: string; init: RequestInit }[]
 const NOW = new Date('2026-10-17T12:00:00Z')
@@ -35,14 +35,14 @@ describe('Google reviews', () => {
     stub(200, { places: [{ rating: 4.5, userRatingCount: 3, googleMapsUri: 'https://evil.example.com' }] })
     expect((await lookupReviews({ name: 'X' }, NOW)).reviews).toEqual({ rating: 4.5, count: 3, checkedAt: NOW.toISOString() })
   })
-  it('POST /api/reviews explains a refused key without echoing it', async () => {
+  it('POST /api/integrations?op=reviews explains a refused key without echoing it', async () => {
     process.env.GOOGLE_PLACES_API_KEY = 'gkey'
     stub(403, { error: { message: 'API key gkey not valid' } })
-    const res = await POST(new Request('http://localhost/api/reviews', { method: 'POST', body: JSON.stringify({ name: 'Corner Cafe' }) }))
+    const res = await POST(new Request('http://localhost/api/integrations?op=reviews', { method: 'POST', body: JSON.stringify({ name: 'Corner Cafe' }) }))
     expect(res.status).toBe(502)
     const text = await res.text()
     expect(text).toMatch(/refused/)
     expect(text).not.toContain('gkey')
-    expect((await POST(new Request('http://localhost/api/reviews', { method: 'POST', body: '{}' }))).status).toBe(400)
+    expect((await POST(new Request('http://localhost/api/integrations?op=reviews', { method: 'POST', body: '{}' }))).status).toBe(400)
   })
 })
