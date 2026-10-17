@@ -142,6 +142,15 @@ Every queued email has a **Preview** link (on its Due now row, or under In outre
 
 If the app is closed while an email is being sent, that lead shows "Send result unknown, check your Sent folder". Press **Mark as sent** or **Retry**. It is never sent twice automatically.
 
+### Import leads from a CSV
+
+On the Outreach tab, **Import leads from a CSV** takes a list from a spreadsheet, a CRM export or a lead database (comma, semicolon or tab separated, up to 2,000 rows and 5 MB). Lead Finder guesses which column is the business name, email, website, phone, address, city, category and notes; check the guesses, then press **Import**.
+
+- Each row becomes a saved lead (rows without a business name are skipped). Importing the same file again updates those leads instead of adding copies.
+- **Add the ones with an email to outreach now** puts them straight into the sequence (unsubscribed addresses are still skipped).
+- Their websites are checked afterwards, which can find emails the file didn't have. Use **Add all saved leads with an email** to add those.
+- Imported leads have no map position, so they show "Imported" instead of a distance.
+
 ### Replies
 
 The **Replies** section at the top of the Outreach tab reads your mailbox for answers to your outreach emails (`POST /api/inbox`, over IMAP on port 993), using the same username and app password as sending.

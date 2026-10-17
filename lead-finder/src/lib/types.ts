@@ -35,6 +35,7 @@ export type Lead = {
   operator?: string // OSM operator tag
   isChain?: boolean // brand tagged, or the same name appears 3+ times in the results
   isDemo?: boolean
+  imported?: boolean // came from a CSV import: no map position or distance
   project?: Project // set for leads from building permits: the lead is the job's general contractor
 }
 

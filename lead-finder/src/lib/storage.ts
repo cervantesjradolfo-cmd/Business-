@@ -121,6 +121,30 @@ export function useSavedLeads(key: string = STORAGE_KEYS.saved) {
   )
 
   const save = useCallback((lead: Lead, audit?: AuditResult) => upsert(lead, audit, {}), [upsert])
+  // Saves many leads in one write (CSV import). Existing leads keep their status, notes and audit.
+  const saveMany = useCallback((items: { lead: Lead; notes?: string }[]): { saved: Record<string, SavedLead>; added: number; updated: number } => {
+    const prev = loadSaved(key)
+    const next = { ...prev }
+    const now = new Date().toISOString()
+    let added = 0
+    let updated = 0
+    for (const { lead, notes } of items) {
+      const old = next[lead.id]
+      if (old) updated++
+      else added++
+      next[lead.id] = {
+        ...old,
+        lead,
+        status: old?.status ?? 'new',
+        notes: old?.notes || notes || '',
+        savedAt: old?.savedAt ?? now,
+        updatedAt: now,
+      }
+    }
+    writeJson(key, next)
+    setSaved(next)
+    return { saved: next, added, updated }
+  }, [key])
   const remove = useCallback(
     (id: string) =>
       update((prev) => {
@@ -150,7 +174,7 @@ export function useSavedLeads(key: string = STORAGE_KEYS.saved) {
     [update],
   )
 
-  return { saved, save, remove, setStatus, setNotes, setPitch, setOutreachEmail }
+  return { saved, save, saveMany, remove, setStatus, setNotes, setPitch, setOutreachEmail }
 }
 
 export const EMPTY_SENDER: Sender = { name: '', business: '', email: '', phone: '', address: '', website: '' }

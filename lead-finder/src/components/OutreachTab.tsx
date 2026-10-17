@@ -11,7 +11,9 @@ import { handledReplies, inboxReady, pendingReplies, updateReply } from '../lib/
 import type { RunStatus } from '../lib/useOutreachRunner'
 import type { ReplyCheck } from '../lib/useReplies'
 import type { Campaign, ClientProfile, Enrollment, Mailbox, OutreachState, Pitch, SavedLead, Sender, SendResult } from '../lib/types'
+import type { ImportedRow } from '../lib/csvImport'
 import EmailPreview from './EmailPreview'
+import ImportCsv from './ImportCsv'
 import MailboxSettings from './MailboxSettings'
 import RepliesPanel from './RepliesPanel'
 
@@ -39,6 +41,7 @@ type Props = {
   }
   onOpenLead: (id: string) => void
   onOpenSettings: () => void
+  onImport: (rows: ImportedRow[], addToOutreach: boolean) => string
 }
 
 const btn = 'rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50'
@@ -307,6 +310,8 @@ export default function OutreachTab(p: Props) {
         </div>
         {Object.values(saved).some((s) => !canEnroll(s, state).ok) && <p className="text-xs text-slate-500">Leads already in outreach, unsubscribed or marked replied, won or lost are skipped.</p>}
       </section>
+
+      <ImportCsv onImport={p.onImport} />
 
       <SequenceEditor campaign={state.campaign} onSave={(campaign) => p.update((cur) => ({ ...cur, campaign }))} />
 

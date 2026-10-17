@@ -6,14 +6,15 @@ import { ApiUnavailableError, auditLeads, fetchPitch, searchLeads, searchProject
 import { csvFilename, leadsToCsv } from './lib/csv'
 import { applyFilters, sortByContact, sortLeads } from './lib/filters'
 import { toLead } from './lib/format'
-import { canEnroll, dueSteps, enroll, enrollmentLabel, outreachEmailFor, suppress, syncWithSaved } from './lib/outreach'
+import type { ImportedRow } from './lib/csvImport'
+import { canEnroll, dueSteps, enroll, enrollmentLabel, loadOutreach, outreachEmailFor, suppress, syncWithSaved } from './lib/outreach'
 import { mailboxKey, outreachKey, useMailbox, useOutreach } from './lib/outreachStore'
 import { buildTemplatePitch, pitchRequestFor } from './lib/pitch'
 import { useOutreachRunner } from './lib/useOutreachRunner'
 import { useReplies } from './lib/useReplies'
 import { isEmail } from './lib/validate'
 import { scoreLead } from './lib/scoring'
-import { EMPTY_SENDER, savedKey, useProfiles, useSavedLeads, useSender } from './lib/storage'
+import { EMPTY_SENDER, savedKey, useProfiles, useSavedLeads, useSender, writeJson } from './lib/storage'
 import type { AuditResult, ClientProfile, Filters as FiltersState, Lead, Pitch, ProjectsRequest, SavedLead, ScoredLead, SearchRequest, Sender } from './lib/types'
 import ApiNotice from './components/ApiNotice'
 import DemoBanner from './components/DemoBanner'
@@ -102,7 +103,7 @@ function Workspace({ profile, sender, header, settingsOpen, onOpenSettings }: Wo
   const [pitches, setPitches] = useState<Record<string, Pitch>>({})
   const [pitchLoading, setPitchLoading] = useState(false)
 
-  const { saved, save, remove, setStatus, setNotes, setPitch, setOutreachEmail } = useSavedLeads(savedKey(profile?.id))
+  const { saved, save, saveMany, remove, setStatus, setNotes, setPitch, setOutreachEmail } = useSavedLeads(savedKey(profile?.id))
   const outreachStoreKey = outreachKey(profile?.id)
   const outreach = useOutreach(outreachStoreKey)
   const [mailbox, setMailbox] = useMailbox(mailboxKey(profile?.id))
@@ -333,6 +334,42 @@ function Workspace({ profile, sender, header, settingsOpen, onOpenSettings }: Wo
   const now = new Date()
   const outreachDue = dueSteps(outreach.state, saved, now).length
 
+  // CSV import: saves the rows, adds the ones with an email to outreach if asked, then checks their websites
+  // in the background (which finds more emails and, for your agency, the gaps).
+  const importLeads = useCallback((rows: ImportedRow[], addToOutreach: boolean): string => {
+    const { saved: after, added, updated } = saveMany(rows)
+    let enrolled = 0
+    if (addToOutreach) {
+      const at = new Date()
+      let next = loadOutreach(outreachStoreKey)
+      for (const r of rows) {
+        const s = after[r.lead.id]
+        const n = s ? enroll(next, s, at) : next
+        if (n !== next) enrolled++
+        next = n
+      }
+      if (enrolled) {
+        writeJson(outreachStoreKey, next)
+        updateOutreach(() => next)
+      }
+    }
+    const withSite = rows.map((r) => r.lead).filter((l) => l.website?.trim())
+    void (async () => {
+      for (let i = 0; i < withSite.length; i += 10) {
+        const batch = withSite.slice(i, i + 10)
+        const results = await auditLeads(batch.map((l) => ({ id: l.id, website: l.website! })))
+        for (const res of results) {
+          const lead = batch.find((l) => l.id === res.id)
+          if (lead) save(lead, res)
+        }
+      }
+    })()
+    const parts = [`Imported ${added} new ${added === 1 ? 'lead' : 'leads'}${updated ? `, updated ${updated}` : ''}`]
+    if (addToOutreach) parts.push(`added ${enrolled} to outreach`)
+    if (withSite.length) parts.push(`checking ${withSite.length} websites for emails`)
+    return `${parts.join(', ')}.`
+  }, [saveMany, save, outreachStoreKey, updateOutreach])
+
   async function regenerate() {
     if (!selected) return
     const id = selected.id
@@ -419,7 +456,7 @@ function Workspace({ profile, sender, header, settingsOpen, onOpenSettings }: Wo
             state={outreach.state} update={outreach.update} saved={saved} mailbox={mailbox} onMailbox={setMailbox}
             sender={sender} profile={profile} now={now} pitchFor={pitchForSaved} markContacted={markContacted}
             status={runner.status} onRun={runner.runNow} onStop={runner.stop} onAuto={runner.setAuto} onTest={runner.sendTest} replies={replies}
-            onOpenLead={(id) => { setTab('saved'); setSelectedId(id) }} onOpenSettings={onOpenSettings}
+            onOpenLead={(id) => { setTab('saved'); setSelectedId(id) }} onOpenSettings={onOpenSettings} onImport={importLeads}
           />
         )}
 

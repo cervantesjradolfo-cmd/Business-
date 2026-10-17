@@ -60,7 +60,7 @@ export default function LeadDetail(p: Props) {
           <h2 className="text-lg font-bold leading-tight break-words">{lead.name}</h2>
           {!p.profile && <ScoreBadge score={lead.score} />}
         </div>
-        <p className="mt-1 text-sm text-slate-500">{lead.category} · {formatMiles(lead.distanceKm)} away</p>
+        <p className="mt-1 text-sm text-slate-500">{lead.category} · {lead.imported ? 'imported from a CSV' : `${formatMiles(lead.distanceKm)} away`}</p>
       </div>
 
       {lead.project && (
@@ -114,7 +114,7 @@ export default function LeadDetail(p: Props) {
           ) : (
             <>
               <a className={link} href={googleMapsUrl(lead)} target="_blank" rel="noopener noreferrer">Google Maps</a>
-              <a className={link} href={lead.osmUrl} target="_blank" rel="noopener noreferrer">OpenStreetMap</a>
+              {lead.osmUrl && <a className={link} href={lead.osmUrl} target="_blank" rel="noopener noreferrer">OpenStreetMap</a>}
             </>
           )}
         </div>
