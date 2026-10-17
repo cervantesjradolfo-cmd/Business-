@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import clsx from 'clsx'
-import { Loader2, Search } from 'lucide-react'
+import { Loader2, Search, Star } from 'lucide-react'
 import { CATEGORIES } from '../data/categories'
 import { LARGEST_US_CITIES, MAX_PLACES, STATE_CITIES, parsePlaces, stateCities } from '../data/places'
 import { KM_PER_MILE } from '../lib/format'
@@ -13,12 +13,14 @@ type Props = {
   searching: boolean
   demo: boolean
   profile?: ClientProfile
+  favorites: CategoryId[] // starred categories, listed first
+  onToggleFavorite: (id: CategoryId) => void
 }
 
 const field = 'w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-brand'
 const DAYS = [30, 60, 90, 180]
 
-export default function SearchForm({ onSearch, onSearchProjects, onSearchPlaces, searching, demo, profile }: Props) {
+export default function SearchForm({ onSearch, onSearchProjects, onSearchPlaces, searching, demo, profile, favorites, onToggleFavorite }: Props) {
   // Profiles with permit keywords can also search active projects, and start there.
   const canProjects = !!profile && profile.projectKeywords.length > 0
   const [kind, setKind] = useState<'projects' | 'businesses'>(canProjects ? 'projects' : 'businesses')
@@ -31,9 +33,11 @@ export default function SearchForm({ onSearch, onSearchProjects, onSearchPlaces,
   const many = !projects && where === 'many'
   const places = parsePlaces(placesText)
   const [category, setCategory] = useState<CategoryId>(profile?.categories[0] ?? 'any')
-  // A client profile lists its customer types first.
+  // A client profile lists its customer types first, then your starred categories, then the rest.
   const preferred = CATEGORIES.filter((c) => profile?.categories.includes(c.id))
-  const others = CATEGORIES.filter((c) => !profile?.categories.includes(c.id))
+  const starred = favorites.map((id) => CATEGORIES.find((c) => c.id === id)).filter((c) => !!c && !preferred.includes(c)) as typeof CATEGORIES
+  const others = CATEGORIES.filter((c) => !preferred.includes(c) && !starred.includes(c))
+  const isFavorite = favorites.includes(category)
   // Shown in miles; the API takes km (15 mi is just under its 25 km cap).
   const [radiusMi, setRadiusMi] = useState(3)
   const radiusKm = Math.round(radiusMi * KM_PER_MILE * 100) / 100
@@ -120,23 +124,39 @@ export default function SearchForm({ onSearch, onSearchProjects, onSearchPlaces,
             </select>
           </label>
         ) : (
-          <label className="block lg:w-64">
-            <span className="mb-1 block text-xs font-medium text-slate-600">Category</span>
-            <select className={field} value={category} onChange={(e) => setCategory(e.target.value as CategoryId)}>
-              {preferred.length > 0 ? (
-                <>
+          <div className="block lg:w-72">
+            <span className="mb-1 block text-xs font-medium text-slate-600" aria-hidden>Category</span>
+            <div className="flex gap-1">
+              <select className={field} aria-label="Category" value={category} onChange={(e) => setCategory(e.target.value as CategoryId)}>
+                {preferred.length > 0 && (
                   <optgroup label={`${profile!.label}'s customers`}>
                     {preferred.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
                   </optgroup>
+                )}
+                {starred.length > 0 && (
+                  <optgroup label="★ Favorites">
+                    {starred.map((c) => <option key={c.id} value={c.id}>★ {c.label}</option>)}
+                  </optgroup>
+                )}
+                {preferred.length + starred.length > 0 ? (
                   <optgroup label="All categories">
                     {others.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
                   </optgroup>
-                </>
-              ) : (
-                others.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)
+                ) : (
+                  others.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)
+                )}
+              </select>
+              {category !== 'any' && (
+                <button
+                  type="button" onClick={() => onToggleFavorite(category)} aria-pressed={isFavorite}
+                  aria-label={isFavorite ? 'Remove from favorites' : 'Add to favorites'} title={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+                  className="shrink-0 rounded-lg border border-slate-300 bg-white px-2 hover:bg-slate-50"
+                >
+                  <Star className={clsx('h-4 w-4', isFavorite ? 'fill-amber-400 text-amber-500' : 'text-slate-400')} aria-hidden />
+                </button>
               )}
-            </select>
-          </label>
+            </div>
+          </div>
         )}
         <label className="block lg:w-44">
           <span className="mb-1 block text-xs font-medium text-slate-600">Radius: {radiusMi} mi</span>

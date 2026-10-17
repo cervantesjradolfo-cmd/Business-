@@ -71,6 +71,12 @@ Heat is 1 plus the points, up to 5. Use **Heat 4+ only** and **Hottest first** i
 
 **Google reviews (optional):** set `GOOGLE_PLACES_API_KEY` (a Google Cloud key with the Places API (New) enabled) and the lead panel gets **Check Google reviews**. It looks up that one business's rating and review count, saves the lead with them and updates its heat. Google bills each lookup, so it only runs when you press the button.
 
+## Niche categories and favorites
+
+The category list includes 16 niches where no big software platform bundles an AI receptionist yet (from the research report `reports/Underserved AI niches for agencies.md`): garage door repair, fence contractors, concrete and epoxy floors, septic and well, tree service, locksmiths, towing, junk removal, glass and glazing, party and event rentals, wedding and event venues, martial arts and dance studios, funeral homes, daycare and preschools, photographers, and self storage. They are starred, so they appear first under **★ Favorites**. Press the star next to the category to add or remove a favorite; your choice is kept in this browser.
+
+Many trades are barely tagged in OpenStreetMap, so these categories also search by business name (`nameSearchTerms` in `src/data/categories.ts`). Expect fewer results for garage doors, fencing, concrete, septic and tree service (often a handful per city) than for locksmiths, funeral homes, studios or daycares. For bigger lists in those trades, import a CSV from another source.
+
 ## Search many places at once
 
 Business searches have **One place** and **Many places**. With **Many places**, type or paste places one per line (cities, ZIP codes or addresses), or use **Fill with** to load the 50 largest US cities or a state's biggest cities (`src/data/places.ts`). The app searches each place in turn with the same category, radius and **Max per place**, adds new leads to one list (a business found from two places is listed once) and checks their websites as it goes. A place that can't be searched is skipped and named at the end. **Stop** ends the run and keeps what was found. Each place takes about 5 to 30 seconds, so keep the tab open for long lists (up to 100 places).

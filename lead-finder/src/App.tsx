@@ -17,7 +17,7 @@ import { useReplies } from './lib/useReplies'
 import { useBackground } from './lib/useBackground'
 import { isEmail } from './lib/validate'
 import { scoreLead } from './lib/scoring'
-import { EMPTY_SENDER, savedKey, useProfiles, useSavedLeads, useSender, writeJson } from './lib/storage'
+import { EMPTY_SENDER, savedKey, useFavoriteCategories, useProfiles, useSavedLeads, useSender, writeJson } from './lib/storage'
 import type { AuditResult, ClientProfile, Filters as FiltersState, Integrations, Lead, LeadStatus, Pitch, ProjectsRequest, Reply, SavedLead, ScoredLead, SearchRequest, Sender } from './lib/types'
 import ApiNotice from './components/ApiNotice'
 import DemoBanner from './components/DemoBanner'
@@ -106,6 +106,7 @@ function Workspace({ profile, sender, header, settingsOpen, onOpenSettings }: Wo
   const [pitches, setPitches] = useState<Record<string, Pitch>>({})
   const [pitchLoading, setPitchLoading] = useState(false)
 
+  const [favoriteCategories, toggleFavoriteCategory] = useFavoriteCategories()
   const { saved, save, saveMany, remove, setStatus, setNotes, setPitch, setOutreachEmail } = useSavedLeads(savedKey(profile?.id))
   const outreachStoreKey = outreachKey(profile?.id)
   const outreach = useOutreach(outreachStoreKey)
@@ -496,6 +497,7 @@ function Workspace({ profile, sender, header, settingsOpen, onOpenSettings }: Wo
           onSearchProjects={(req: ProjectsRequest) => runSearch((signal) => searchProjects(req, signal))}
           onSearchPlaces={runPlaces}
           searching={searching} demo={mode === 'demo'} profile={profile}
+          favorites={favoriteCategories} onToggleFavorite={toggleFavoriteCategory}
         />
         {searching && <ProgressBar phase={phase === 'searching' ? 'searching' : 'auditing'} done={progress.done} total={progress.total} place={placeProgress} onStop={placeProgress ? stopRun : undefined} />}
         {phase === 'unavailable' && <ApiNotice kind="unavailable" onDemo={enterDemo} />}

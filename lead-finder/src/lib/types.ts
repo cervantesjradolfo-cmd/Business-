@@ -4,6 +4,8 @@ export type CategoryId =
   | 'any' | 'restaurants' | 'cafes' | 'salons' | 'barbers' | 'auto_repair' | 'dentists'
   | 'fitness' | 'drywall' | 'general_contractors' | 'trades' | 'cleaning' | 'party_rentals' | 'retail'
   | 'real_estate' | 'property_managers' | 'architects' | 'law' | 'medical'
+  | 'garage_doors' | 'fencing' | 'concrete' | 'septic_well' | 'tree_service' | 'locksmiths' | 'wedding_venues'
+  | 'martial_arts_dance' | 'towing' | 'funeral_homes' | 'daycare' | 'glass' | 'junk_removal' | 'photographers' | 'self_storage'
 export type ServiceId =
   | 'website' | 'online_booking' | 'ai_chat' | 'mobile_redesign' | 'seo_basics' | 'review_collection'
 export type GapId =

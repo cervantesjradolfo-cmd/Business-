@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { getCategory } from '../data/categories'
+import { DEFAULT_FAVORITES, getCategory } from '../data/categories'
 import { DEFAULT_PROFILES } from '../data/profiles'
 import { cleanKeywords } from './validate'
 import type { AuditResult, CategoryId, ClientProfile, Lead, LeadStatus, Pitch, SavedLead, Sender } from './types'
@@ -15,6 +15,7 @@ export const STORAGE_KEYS = {
   activeProfile: 'leadfinder:activeProfile',
   outreach: 'leadfinder:outreach',
   mailbox: 'leadfinder:mailbox',
+  favoriteCategories: 'leadfinder:favoriteCategories',
 } as const
 
 // Each client profile keeps its own saved leads; the agency profile keeps the original key.
@@ -285,4 +286,24 @@ export function useProfiles() {
   // A stored id whose profile was deleted (e.g. in another tab) falls back to the agency profile.
   const active = profiles.find((p) => p.id === activeId)
   return { profiles, active, select, saveProfile, deleteProfile }
+}
+
+// Starred categories, shown first in the search form. Until you star or unstar one, the
+// underserved niches from the research report are starred.
+export function loadFavoriteCategories(): CategoryId[] {
+  const raw = readJson<unknown>(STORAGE_KEYS.favoriteCategories, null)
+  if (!Array.isArray(raw)) return DEFAULT_FAVORITES
+  return [...new Set(raw.filter((v): v is CategoryId => typeof v === 'string' && v !== 'any' && !!getCategory(v)))]
+}
+
+export function useFavoriteCategories(): [CategoryId[], (id: CategoryId) => void] {
+  const [favorites, setFavorites] = useState<CategoryId[]>(loadFavoriteCategories)
+  const toggle = useCallback((id: CategoryId) => {
+    setFavorites((prev) => {
+      const next = prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+      writeJson(STORAGE_KEYS.favoriteCategories, next)
+      return next
+    })
+  }, [])
+  return [favorites, toggle]
 }

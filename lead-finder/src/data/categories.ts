@@ -20,7 +20,122 @@ export type CategoryDef = {
   nameSearchTerms?: string[]
 }
 
+// Niches where no big software platform bundles an AI receptionist yet (research report
+// "Underserved AI niches for agencies", Oct 2026). Listed first so their more specific labels win
+// (a towing shop tagged car_repair is labelled towing, a dojo martial arts, a banquet hall a venue).
+// Many of these trades have little OpenStreetMap tagging, so they are also found by name; the name
+// searches were checked live on Nominatim (Chicago, Oct 2026). Coverage is thin for garage doors,
+// fencing, concrete, septic and tree service: expect a few results per town, not dozens.
+const named = (keys: string[], words: string) => keys.map((k) => `["${k}"~"."]["name"~"${words}",i]`)
+export const NICHES: CategoryDef[] = [
+  {
+    id: 'garage_doors', label: 'Garage door repair', singular: 'Garage door company',
+    selectors: ['["shop"~"^(doors|garage_doors)$"]["name"~"garage",i]', '["craft"~"^(garage_door|door_construction)$"]'],
+    nameSelectors: named(['shop', 'craft', 'office'], 'garage door'),
+    nameSearchTerms: ['garage door'],
+    nominatimTerms: [],
+  },
+  {
+    id: 'fencing', label: 'Fence contractors', singular: 'Fence contractor',
+    selectors: ['["craft"~"^(fence_maker|fencer|fence_builder)$"]', '["shop"="fence"]'],
+    nameSelectors: named(['shop', 'craft', 'office'], 'fence|fencing'),
+    nameSearchTerms: ['fence'],
+    nominatimTerms: [],
+  },
+  {
+    id: 'concrete', label: 'Concrete, flatwork & epoxy floors', singular: 'Concrete contractor',
+    selectors: ['["craft"~"^(concrete|paver|concrete_contractor)$"]'],
+    nameSelectors: named(['craft', 'office', 'shop'], 'concrete|epoxy|flatwork|paving stone'),
+    nameSearchTerms: ['concrete', 'epoxy'],
+    nominatimTerms: [],
+  },
+  {
+    id: 'septic_well', label: 'Septic & well services', singular: 'Septic & well service',
+    selectors: ['["craft"~"^(septic|septic_tank|well_driller|well_drilling)$"]'],
+    nameSelectors: named(['craft', 'office', 'shop'], 'septic|well drilling|well service|well pump'),
+    nameSearchTerms: ['septic', 'well drilling'],
+    nominatimTerms: [],
+  },
+  {
+    id: 'tree_service', label: 'Tree service', singular: 'Tree service',
+    selectors: ['["craft"~"^(arborist|tree_surgeon|tree_service)$"]', '["craft"="gardener"]["name"~"tree",i]'],
+    nameSelectors: named(['craft', 'office', 'shop'], 'tree service|tree care|tree expert|tree removal|arborist|stump'),
+    nameSearchTerms: ['tree service', 'tree removal'],
+    nominatimTerms: [],
+  },
+  {
+    id: 'locksmiths', label: 'Locksmiths', singular: 'Locksmith',
+    selectors: ['["shop"="locksmith"]', '["craft"="locksmith"]'],
+    nameSearchTerms: ['locksmith'],
+    nominatimTerms: ['locksmith'],
+  },
+  {
+    id: 'towing', label: 'Towing', singular: 'Towing company',
+    selectors: ['["office"="towing"]', '["service"="towing"]', '["shop"="car_repair"]["name"~"towing",i]'],
+    nameSelectors: named(['office', 'shop', 'craft'], 'towing|wrecker'),
+    nameSearchTerms: ['towing'],
+    nominatimTerms: [],
+  },
+  {
+    id: 'junk_removal', label: 'Junk removal', singular: 'Junk removal company',
+    selectors: ['["craft"="junk_removal"]', '["office"="moving_company"]["name"~"junk|haul",i]'],
+    nameSelectors: named(['craft', 'office', 'shop'], 'junk|hauling'),
+    nameSearchTerms: ['junk'],
+    nominatimTerms: [],
+  },
+  {
+    id: 'glass', label: 'Glass & glazing', singular: 'Glass company',
+    selectors: ['["craft"~"^(glaziery|window_construction)$"]', '["shop"="glaziery"]'],
+    nameSelectors: named(['craft', 'office', 'shop'], 'glass|glazing'),
+    nominatimTerms: [],
+  },
+  {
+    id: 'party_rentals', label: 'Party & event rentals', singular: 'Party rental',
+    selectors: ['["shop"~"^(party|rental)$"]'],
+    nameSelectors: named(['shop', 'craft', 'office'], 'party rental|tent rental|bounce|inflatable|jump'),
+    nameSearchTerms: ['tent rental', 'party rental', 'bounce'],
+    nominatimTerms: [],
+  },
+  {
+    id: 'wedding_venues', label: 'Wedding & event venues', singular: 'Event venue',
+    selectors: ['["amenity"="events_venue"]'],
+    nameSelectors: named(['amenity'], 'banquet|wedding|reception hall|event (hall|center|venue)'),
+    nameSearchTerms: ['banquet'],
+    nominatimTerms: [],
+  },
+  {
+    id: 'martial_arts_dance', label: 'Martial arts & dance studios', singular: 'Studio',
+    selectors: ['["amenity"="dojo"]', '["leisure"="dance"]', '["amenity"="dancing_school"]'],
+    nominatimTerms: ['dojo', 'dance school'],
+  },
+  {
+    id: 'funeral_homes', label: 'Funeral homes', singular: 'Funeral home',
+    selectors: ['["shop"="funeral_directors"]', '["amenity"="funeral_hall"]'],
+    nominatimTerms: ['funeral directors'],
+  },
+  {
+    id: 'daycare', label: 'Daycare & preschools', singular: 'Daycare',
+    selectors: ['["amenity"="childcare"]', '["amenity"="kindergarten"]'],
+    nominatimTerms: ['kindergarten', 'childcare'],
+  },
+  {
+    id: 'photographers', label: 'Photographers', singular: 'Photographer',
+    selectors: ['["craft"="photographer"]', '["shop"="photo_studio"]'],
+    nominatimTerms: ['photographer'],
+  },
+  {
+    id: 'self_storage', label: 'Self storage', singular: 'Self storage',
+    selectors: ['["shop"="storage_rental"]'],
+    nameSearchTerms: ['self storage'],
+    nominatimTerms: [],
+  },
+]
+
+// Starred in the category list until you change them.
+export const DEFAULT_FAVORITES: CategoryId[] = NICHES.map((c) => c.id)
+
 const SPECIFIC: CategoryDef[] = [
+  ...NICHES,
   { id: 'restaurants', label: 'Restaurants', singular: 'Restaurant', selectors: ['["amenity"~"^(restaurant|fast_food)$"]'], nominatimTerms: ['restaurant'] },
   { id: 'cafes', label: 'Cafes', singular: 'Cafe', selectors: ['["amenity"~"^(cafe|ice_cream)$"]'], nominatimTerms: ['cafe'] },
   { id: 'salons', label: 'Hair & beauty salons', singular: 'Hair salon', selectors: ['["shop"="beauty"]', '["shop"="hairdresser"]["hairdresser"!="barber"]'], nominatimTerms: ['hairdresser'] },
@@ -61,7 +176,6 @@ const SPECIFIC: CategoryDef[] = [
     nominatimTerms: ['electrician', 'carpenter'],
   },
   { id: 'cleaning', label: 'Cleaning services', singular: 'Cleaning service', selectors: ['["shop"~"^(dry_cleaning|laundry)$"]', '["craft"="cleaning"]'], nominatimTerms: ['dry cleaning', 'laundry'] },
-  { id: 'party_rentals', label: 'Party & event rentals', singular: 'Party rental', selectors: ['["shop"~"^(party|rental)$"]', '["amenity"="events_venue"]'], nominatimTerms: [] },
   {
     id: 'retail',
     label: 'Retail shops',

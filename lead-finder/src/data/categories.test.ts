@@ -26,6 +26,21 @@ describe('Nominatim fallback terms', () => {
       real_estate: ['estate agent'],
       law: [],
       medical: ['clinic', 'doctors'],
+      garage_doors: [],
+      fencing: [],
+      concrete: [],
+      septic_well: [],
+      tree_service: [],
+      locksmiths: ['locksmith'],
+      towing: [],
+      junk_removal: [],
+      glass: [],
+      wedding_venues: [],
+      martial_arts_dance: ['dojo', 'dance school'],
+      funeral_homes: ['funeral directors'],
+      daycare: ['kindergarten', 'childcare'],
+      photographers: ['photographer'],
+      self_storage: [],
     })
   })
   it('never uses the terms that returned 0 results for the problem categories', () => {
