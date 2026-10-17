@@ -165,6 +165,12 @@ Open the **Mailbox** section on the Outreach tab, pick a provider, enter your us
 
 The SMTP password is kept only in this browser. It is sent to your own server with each email, used for that one send, and never stored or logged. The server refuses private and local addresses as mail servers.
 
+### Sending hours and warm-up
+
+Under **Mailbox**, **When to send** sets the days and hours Lead Finder may send (Monday to Friday, 9:00 to 17:00 by default, in your browser's time zone when you save). Outside them, due emails wait and the Outreach tab says when sending starts again. Answers to replies, and emails you open in your email app, aren't limited.
+
+**Warm up a new mailbox** (on by default) sends at most 10 emails a day in the mailbox's first week, then 5 more a day each week until your daily limit. The warm-up starts with the first email Lead Finder sends from that profile. Turn it off for a mailbox that has been sending for a while.
+
 ### Compliance check
 
 Every email is checked right before it goes out, whether it's sent by Lead Finder, opened in your email app or sent as an answer to a reply. An email that fails isn't sent; the reason shows on its row and in its preview, which also says when it passes. It checks that:
@@ -179,7 +185,7 @@ The server (`/api/send`) repeats the checks it can make from the email alone, so
 
 ### Send safely
 
-- Start small, around 20 emails a day per mailbox, and raise it slowly over a few weeks. Keep the gap between emails at 45 seconds or more.
+- Start small and raise the volume slowly over a few weeks (the warm-up does this for you). Keep the gap between emails at 45 seconds or more.
 - Use a separate domain and mailbox for cold email, so a spam complaint cannot hurt your main address.
 - Use your real name and address as the sender, and keep your postal address in the signature (the app adds your signature and an opt-out line to every email).
 - Honour opt-outs within 10 business days. Press **Unsubscribed** when someone asks, and the address is never emailed again from that profile.

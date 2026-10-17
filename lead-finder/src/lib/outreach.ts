@@ -3,6 +3,7 @@
 import { STATUS_LABELS } from './csv'
 import { emailFooter } from './pitch'
 import { IMAP_HOSTS, loadReplies } from './replies'
+import { browserTimeZone, validTimeZone } from './sendWindow'
 import { readJson } from './storage'
 import { isEmail } from './validate'
 import type {
@@ -24,6 +25,7 @@ export const DEFAULT_CAMPAIGN: Campaign = {
 
 export const EMPTY_MAILBOX: Mailbox = {
   host: '', port: 465, secure: true, user: '', pass: '', fromName: '', fromAddress: '', gapSeconds: 45, dailyCap: 30, imapHost: '',
+  sendDays: [1, 2, 3, 4, 5], sendStart: 9, sendEnd: 17, timeZone: 'UTC', warmup: true,
 }
 
 export const MAILBOX_PRESETS: { id: 'gmail' | 'outlook' | 'zoho' | 'other'; label: string; host: string; port: 465 | 587; imapHost: string }[] = [
@@ -286,7 +288,8 @@ export function recordSent(state: OutreachState, leadId: string, entry: Outreach
   delete updated.lastError
   delete updated.lastErrorAt
   const sentToday = entry.via === 'smtp' ? { day: localDay(now), count: sentTodayCount(state, now) + 1 } : state.sentToday
-  return { ...state, enrollments: { ...state.enrollments, [leadId]: updated }, sentToday }
+  const mailboxStartedAt = state.mailboxStartedAt ?? (entry.via === 'smtp' ? entry.sentAt : undefined)
+  return { ...state, enrollments: { ...state.enrollments, [leadId]: updated }, sentToday, ...(mailboxStartedAt ? { mailboxStartedAt } : {}) }
 }
 
 export function recordError(state: OutreachState, leadId: string, error: string, now: Date): OutreachState {
@@ -408,7 +411,22 @@ export function loadOutreach(key: string): OutreachState {
     sentToday: { day: typeof st.day === 'string' ? st.day : '', count: clampInt(st.count, 0, 1_000_000, 0) },
     replies: loadReplies(r.replies),
     ...(isoOrEmpty(r.inboxCheckedAt) ? { inboxCheckedAt: r.inboxCheckedAt as string } : {}),
+    ...(isoOrEmpty(r.mailboxStartedAt) ? { mailboxStartedAt: r.mailboxStartedAt as string } : {}),
   }
+}
+
+function loadSchedule(r: Record<string, unknown>): Pick<Mailbox, 'sendDays' | 'sendStart' | 'sendEnd' | 'timeZone' | 'warmup'> {
+  const days = Array.isArray(r.sendDays)
+    ? [...new Set(r.sendDays.filter((d): d is number => Number.isInteger(d) && (d as number) >= 0 && (d as number) <= 6))].sort()
+    : EMPTY_MAILBOX.sendDays
+  let sendStart = clampInt(r.sendStart, 0, 23, EMPTY_MAILBOX.sendStart)
+  let sendEnd = clampInt(r.sendEnd, 1, 24, EMPTY_MAILBOX.sendEnd)
+  if (sendStart >= sendEnd) {
+    sendStart = EMPTY_MAILBOX.sendStart
+    sendEnd = EMPTY_MAILBOX.sendEnd
+  }
+  const tz = typeof r.timeZone === 'string' && validTimeZone(r.timeZone) ? r.timeZone : browserTimeZone()
+  return { sendDays: days, sendStart, sendEnd, timeZone: tz, warmup: r.warmup !== false }
 }
 
 export function loadMailbox(key: string): Mailbox {
@@ -429,5 +447,6 @@ export function loadMailbox(key: string): Mailbox {
     dailyCap: clampInt(r.dailyCap, 1, 200, EMPTY_MAILBOX.dailyCap),
     // Mailboxes saved before reply checks existed get their provider's IMAP server.
     imapHost: typeof r.imapHost === 'string' ? r.imapHost.trim() : (IMAP_HOSTS[str(r.host).trim()] ?? ''),
+    ...loadSchedule(r),
   }
 }

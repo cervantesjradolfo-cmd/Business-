@@ -179,6 +179,7 @@ export type OutreachState = {
   sentToday: { day: string; count: number } // day = local YYYY-MM-DD; SMTP sends only
   replies: Record<string, Reply> // by Reply.id
   inboxCheckedAt?: string // ISO, last successful reply check
+  mailboxStartedAt?: string // ISO, first email Lead Finder sent from this profile's mailbox (starts the warm-up)
 }
 export type Mailbox = {
   host: string
@@ -191,6 +192,11 @@ export type Mailbox = {
   gapSeconds: number // 20..300, default 45
   dailyCap: number // 1..200, default 30
   imapHost: string // incoming mail server for reply checks (port 993, TLS); '' = replies aren't checked
+  sendDays: number[] // weekdays Lead Finder may send on, 0 = Sunday; default Mon to Fri
+  sendStart: number // first hour it may send, 0..23, default 9
+  sendEnd: number // sends stop at this hour, 1..24, default 17
+  timeZone: string // IANA zone the days and hours are in, default the browser's
+  warmup: boolean // keep a new mailbox's daily volume low and raise it weekly, default on
 }
 export type SendRequest = {
   smtp: { host: string; port: number; secure: boolean; user: string; pass: string }

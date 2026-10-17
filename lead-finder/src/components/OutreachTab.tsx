@@ -5,6 +5,7 @@ import {
   senderReady, sentTodayCount, setDraft, setPending, suppress, unenroll, unknownVariables, OUTREACH_VARIABLES,
 } from '../lib/outreach'
 import { complianceProblems } from '../lib/compliance'
+import { effectiveDailyCap, inSendWindow, warmupLabel, windowLabel } from '../lib/sendWindow'
 import { aiDraftFor } from '../lib/outreachAi'
 import { handledReplies, inboxReady, pendingReplies, updateReply } from '../lib/replies'
 import type { RunStatus } from '../lib/useOutreachRunner'
@@ -255,7 +256,11 @@ export default function OutreachTab(p: Props) {
             )}
             {!status.running && status.sent > 0 && <p role="status" className="text-sm text-slate-600">Sent {status.sent} of {status.total}</p>}
             {status.message && <p role="alert" className="text-sm text-red-700">{status.message}</p>}
-            <p className="text-xs text-slate-500">{sentToday} of {mailbox.dailyCap} sent today</p>
+            <p className="text-xs text-slate-500">
+              {sentToday} of {effectiveDailyCap(mailbox, state.mailboxStartedAt, now)} sent today. Sends {windowLabel(mailbox)} ({mailbox.timeZone})
+              {inSendWindow(mailbox, now) ? '.' : ', so nothing is sent right now.'}
+            </p>
+            {warmupLabel(mailbox, state.mailboxStartedAt, now) && <p className="text-xs text-slate-500">{warmupLabel(mailbox, state.mailboxStartedAt, now)}.</p>}
           </div>
         )}
       </section>

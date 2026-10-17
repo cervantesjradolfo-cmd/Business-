@@ -7,6 +7,7 @@ import {
 } from './outreach'
 import { complianceError, complianceProblems } from './compliance'
 import { emailFooter } from './pitch'
+import { effectiveDailyCap, inSendWindow, nextWindowStart, windowLabel } from './sendWindow'
 import { writeJson } from './storage'
 import type { ClientProfile, Mailbox, OutreachState, Pitch, SavedLead, SendRequest, SendResult, Sender } from './types'
 
@@ -87,8 +88,16 @@ export function useOutreachRunner(a: Args) {
         const queue = dueSteps(state, saved, now, autoRun ? { skipRecentErrorsMs: RETRY_AFTER_ERROR_MS } : undefined).filter((e) => !failed.has(e.leadId))
         if (queue.length === 0) break
         total = sent + queue.length
-        if (sentTodayCount(state, now) >= mailbox.dailyCap) {
-          message = `Daily limit reached (${mailbox.dailyCap}). The rest stay due until tomorrow.`
+        if (!inSendWindow(mailbox, now)) {
+          const next = nextWindowStart(mailbox, now)
+          message = `Outside your sending hours (${windowLabel(mailbox)}). Due emails wait${next ? ` until ${next.toLocaleString('en-US', { weekday: 'short', hour: 'numeric', minute: '2-digit' })}` : ''}.`
+          break
+        }
+        const cap = effectiveDailyCap(mailbox, state.mailboxStartedAt, now)
+        if (sentTodayCount(state, now) >= cap) {
+          message = cap < mailbox.dailyCap
+            ? `Today's warm-up limit reached (${cap}). The rest stay due until tomorrow.`
+            : `Daily limit reached (${cap}). The rest stay due until tomorrow.`
           break
         }
         const waitMs = lastSentAt.current + mailbox.gapSeconds * 1000 - Date.now()

@@ -7,7 +7,7 @@ import { useOutreachRunner } from './useOutreachRunner'
 import type { Mailbox, Pitch, SavedLead, Sender } from './types'
 
 const SENDER: Sender = { name: 'Sam', business: 'Acme Web', email: '', phone: '', address: '1 Main St', website: '' }
-const MAILBOX: Mailbox = { host: 'smtp.gmail.com', port: 465, secure: true, user: 'u@gmail.com', pass: 'secret-pw', fromName: 'Sam', fromAddress: 'u@gmail.com', gapSeconds: 20, dailyCap: 30, imapHost: '' }
+const MAILBOX: Mailbox = { host: 'smtp.gmail.com', port: 465, secure: true, user: 'u@gmail.com', pass: 'secret-pw', fromName: 'Sam', fromAddress: 'u@gmail.com', gapSeconds: 20, dailyCap: 30, imapHost: '', sendDays: [0, 1, 2, 3, 4, 5, 6], sendStart: 0, sendEnd: 24, timeZone: 'UTC', warmup: false }
 const mk = (id: string): SavedLead => ({
   lead: { id, osmType: 'node', osmId: 1, osmUrl: '', name: `Biz ${id}`, category: 'Cafe', categoryId: 'cafes', address: '', lat: 0, lon: 0, distanceKm: 1, email: `${id}@biz.example.com` },
   status: 'new', notes: '', savedAt: '', updatedAt: '',
@@ -44,6 +44,7 @@ describe('useOutreachRunner', () => {
     expect(state.enrollments.a.history[0]).toMatchObject({ step: 0, via: 'smtp', messageId: '<m1@x>' })
     expect(state.enrollments.a.pendingSend).toBeUndefined()
     expect(state.sentToday.count).toBe(1)
+    expect(state.mailboxStartedAt).toBe(state.enrollments.a.history[0].sentAt) // the warm-up starts here
     expect(markContacted).toHaveBeenCalledTimes(1)
   })
 
@@ -60,6 +61,32 @@ describe('useOutreachRunner', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1)
     expect(loadOutreach(KEY).enrollments.a).toMatchObject({ nextStep: 0, lastError: 'Bad password.' })
     expect(loadOutreach(KEY).enrollments.a.pendingSend).toBeUndefined()
+  })
+
+  it('waits outside the sending hours and says until when', async () => {
+    const saved = { a: mk('a') }
+    window.localStorage.setItem(KEY, JSON.stringify(enroll(loadOutreach(KEY), saved.a, new Date(Date.now() - 1000))))
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+    const { result } = setup(saved, { ...MAILBOX, sendDays: [] })
+    act(() => result.current.runner.runNow())
+    await waitFor(() => expect(result.current.runner.status.message).toMatch(/^Outside your sending hours/))
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(loadOutreach(KEY).enrollments.a.nextStep).toBe(0)
+  })
+
+  it('keeps a new mailbox to its warm-up limit and starts the warm-up on the first send', async () => {
+    const saved = { a: mk('a') }
+    const s = enroll(loadOutreach(KEY), saved.a, new Date(Date.now() - 1000))
+    const today = new Date()
+    const p = (n: number) => String(n).padStart(2, '0')
+    window.localStorage.setItem(KEY, JSON.stringify({ ...s, sentToday: { day: `${today.getFullYear()}-${p(today.getMonth() + 1)}-${p(today.getDate())}`, count: 10 } }))
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+    const { result } = setup(saved, { ...MAILBOX, warmup: true })
+    act(() => result.current.runner.runNow())
+    await waitFor(() => expect(result.current.runner.status.message).toBe("Today's warm-up limit reached (10). The rest stay due until tomorrow."))
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 
   it('does nothing without a mailbox', async () => {
