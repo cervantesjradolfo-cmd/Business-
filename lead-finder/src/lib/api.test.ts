@@ -83,3 +83,36 @@ describe('api client', () => {
     expect(p.email.subject).toBe('Quick idea for Acme Cafe')
   })
 })
+
+describe('searchLeads when the map servers are busy', () => {
+  const busy = () => res({ error: 'Map data servers are busy. Please try again in a minute.' }, 502)
+  const lead = (id: string) => ({ id })
+  it('tries again and returns the full answer', async () => {
+    const f = vi.fn().mockResolvedValueOnce(busy()).mockResolvedValueOnce(res({ leads: [lead('a')], source: 'overpass' }))
+    vi.stubGlobal('fetch', f)
+    const retries: number[] = []
+    const r = await searchLeads(req, undefined, (n) => retries.push(n), [0, 0])
+    expect(r.leads).toHaveLength(1)
+    expect(retries).toEqual([1])
+  })
+  it('keeps the biggest partial answer when every try is partial or busy', async () => {
+    const f = vi.fn()
+      .mockResolvedValueOnce(res({ leads: [lead('a'), lead('b')], source: 'nominatim', notice: 'partial' }))
+      .mockResolvedValueOnce(busy())
+      .mockResolvedValueOnce(res({ leads: [lead('c')], source: 'nominatim', notice: 'partial' }))
+    vi.stubGlobal('fetch', f)
+    const r = await searchLeads(req, undefined, undefined, [0, 0])
+    expect(r.leads.map((l) => l.id)).toEqual(['a', 'b'])
+    expect(f).toHaveBeenCalledTimes(3)
+  })
+  it('gives up with the busy message after the last try', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => busy()))
+    await expect(searchLeads(req, undefined, undefined, [0, 0])).rejects.toThrow(/busy/)
+  })
+  it('does not retry other errors', async () => {
+    const f = vi.fn(async () => res({ error: "Couldn't find that location." }, 404))
+    vi.stubGlobal('fetch', f)
+    await expect(searchLeads(req, undefined, undefined, [0, 0])).rejects.toThrow(/find that location/)
+    expect(f).toHaveBeenCalledTimes(1)
+  })
+})

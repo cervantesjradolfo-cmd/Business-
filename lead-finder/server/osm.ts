@@ -5,6 +5,7 @@ import { buildGeocodeUrl, buildNominatimNameUrl, buildNominatimSearchUrl, parseG
 import { OVERPASS_MIRRORS, buildOverpassQuery, parseOverpass } from '../src/lib/overpass.js'
 import type { Lead, SearchRequest, SearchResponse } from '../src/lib/types.js'
 import { contactEmail, fetchWithTimeout, userAgent } from './http.js'
+import { kv, kvConfigured } from './kv.js'
 
 type Deps = { sleep?: (ms: number) => Promise<void> }
 type Center = { lat: number; lon: number; displayName: string }
@@ -116,20 +117,69 @@ export async function nominatimSearch(term: string, location: string, deps?: Dep
   return res.json()
 }
 
+const NAME_RETRY_MS = 2_000
+
+// Results of good (Overpass) searches, so a repeat search doesn't need the map servers, and a search
+// made while they are busy can show the last good answer instead of failing. Kept in memory, and in
+// Upstash Redis when it is set up (so it survives between serverless instances).
+const FRESH_MS = 12 * 3600_000
+const KEEP_S = 30 * 86400
+type Cached = { leads: Lead[]; at: number }
+const resultCache = new Map<string, Cached>()
+
+export function resultCacheKey(req: SearchRequest, center: { lat: number; lon: number }): string {
+  return `osm:v1:${req.category}:${center.lat.toFixed(3)},${center.lon.toFixed(3)}:${req.radiusKm}:${req.limit}`
+}
+
+async function readCache(key: string): Promise<Cached | null> {
+  const mem = resultCache.get(key)
+  if (mem) return mem
+  if (!kvConfigured()) return null
+  try {
+    const raw = await kv<string | null>('GET', key)
+    const hit = raw ? (JSON.parse(raw) as Cached) : null
+    return hit && Array.isArray(hit.leads) && typeof hit.at === 'number' ? hit : null
+  } catch (err) {
+    console.error('search cache read error', err)
+    return null
+  }
+}
+
+async function writeCache(key: string, leads: Lead[]): Promise<void> {
+  const entry = { leads, at: Date.now() }
+  if (resultCache.size >= CACHE_MAX) resultCache.delete(resultCache.keys().next().value as string)
+  resultCache.set(key, entry)
+  if (!kvConfigured()) return
+  try {
+    await kv('SET', key, JSON.stringify(entry), 'EX', KEEP_S)
+  } catch (err) {
+    console.error('search cache write error', err)
+  }
+}
+
+export function clearResultCache() {
+  resultCache.clear()
+}
+
 // Name search for categories with nameSearchTerms. Returns null when every request failed.
 async function searchByName(req: SearchRequest, center: Center, deps?: Deps): Promise<Lead[] | null> {
   const terms = getCategory(req.category)?.nameSearchTerms ?? []
   let found: Lead[] = []
   let anyOk = false
   for (const term of terms) {
-    try {
-      await throttle(deps)
-      const res = await fetchWithTimeout(buildNominatimNameUrl(term, center, req.radiusKm, emailParam()), { headers: headers(), timeoutMs: 10000 })
-      if (!res.ok) throw new Error(`Nominatim HTTP ${res.status}`)
-      found = [...found, ...parseNominatimSearch(await res.json(), center, req.radiusKm).filter((l) => l.categoryId === req.category)]
-      anyOk = true
-    } catch (err) {
-      console.error('name search error', err)
+    // A busy Nominatim (429, 5xx, timeout) gets one more try after a short wait.
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        if (attempt > 0) await (deps?.sleep ?? realSleep)(NAME_RETRY_MS)
+        await throttle(deps)
+        const res = await fetchWithTimeout(buildNominatimNameUrl(term, center, req.radiusKm, emailParam()), { headers: headers(), timeoutMs: 10000 })
+        if (!res.ok) throw new Error(`Nominatim HTTP ${res.status}`)
+        found = [...found, ...parseNominatimSearch(await res.json(), center, req.radiusKm).filter((l) => l.categoryId === req.category)]
+        anyOk = true
+        break
+      } catch (err) {
+        console.error('name search error', err)
+      }
     }
   }
   return anyOk ? found : null
@@ -149,13 +199,24 @@ export async function searchBusinesses(
   }
   if (!center) return { error: "Couldn't find that location. Try a city name or ZIP code.", status: 404 }
 
+  const key = resultCacheKey(req, center)
+  const cached = await readCache(key)
+  if (cached && Date.now() - cached.at < FRESH_MS) return { center, leads: cached.leads, source: 'overpass' }
+
   const def = getCategory(req.category)
   const [found, byName] = await Promise.all([
     overpassSearch(buildOverpassQuery(center.lat, center.lon, req.radiusKm, req.category, req.limit)),
     def?.nameSearchTerms ? searchByName(req, center, deps) : Promise.resolve(null),
   ])
   if (found) {
-    return { center, leads: finalizeLeads([...parseOverpass(found.json, center), ...(byName ?? [])], req.limit, req.category === 'any'), source: 'overpass' }
+    const leads = finalizeLeads([...parseOverpass(found.json, center), ...(byName ?? [])], req.limit, req.category === 'any')
+    await writeCache(key, leads)
+    return { center, leads, source: 'overpass' }
+  }
+  // The map servers are busy: an older full answer beats a partial one.
+  if (cached) {
+    const day = new Date(cached.at).toISOString().slice(0, 10)
+    return { center, leads: cached.leads, source: 'overpass', notice: `Map servers are busy, so these are the results saved on ${day}.` }
   }
   if (byName) {
     return {

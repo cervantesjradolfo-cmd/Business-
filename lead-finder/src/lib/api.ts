@@ -46,8 +46,39 @@ async function post<T>(path: string, body: unknown, signal?: AbortSignal): Promi
   return data as T
 }
 
-export function searchLeads(req: SearchRequest, signal?: AbortSignal): Promise<SearchResponse> {
-  return post<SearchResponse>('search', req, signal)
+// Waits before each retry of a search that found the map servers busy.
+export const BUSY_RETRY_MS = [8_000, 20_000]
+
+const sleep = (ms: number, signal?: AbortSignal) =>
+  new Promise<void>((resolve, reject) => {
+    if (signal?.aborted) return reject(signal.reason)
+    const t = setTimeout(resolve, ms)
+    signal?.addEventListener('abort', () => { clearTimeout(t); reject(signal.reason) }, { once: true })
+  })
+
+// When the map servers are busy the search fails, or falls back to a partial search; either way it
+// is tried again a couple of times, keeping the best answer. onRetry(n) is called before retry n.
+export async function searchLeads(
+  req: SearchRequest, signal?: AbortSignal, onRetry?: (attempt: number) => void, waits: number[] = BUSY_RETRY_MS,
+): Promise<SearchResponse> {
+  let best: SearchResponse | undefined
+  for (let attempt = 0; ; attempt++) {
+    try {
+      const res = await post<SearchResponse>('search', req, signal)
+      if (res.source !== 'nominatim') return res
+      if (!best || res.leads.length > best.leads.length) best = res
+    } catch (e) {
+      const busy = e instanceof Error && !(e instanceof ApiUnavailableError) && /busy/i.test(e.message)
+      if (!busy || signal?.aborted) throw e
+      if (attempt >= waits.length) {
+        if (best) return best
+        throw e
+      }
+    }
+    if (attempt >= waits.length) return best!
+    onRetry?.(attempt + 1)
+    await sleep(waits[attempt], signal)
+  }
 }
 
 export function searchProjects(req: ProjectsRequest, signal?: AbortSignal): Promise<ProjectsResponse> {

@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { NOMINATIM_FORBIDDEN, geocode, overpassSearch, searchBusinesses } from './osm'
+import { NOMINATIM_FORBIDDEN, clearResultCache, geocode, overpassSearch, searchBusinesses } from './osm'
 import { OVERPASS_MIRRORS } from '../src/lib/overpass'
 
 const okJson = (data: unknown) => new Response(JSON.stringify(data), { status: 200, headers: { 'content-type': 'application/json' } })
@@ -8,7 +8,7 @@ const geo = [{ lat: '30.27', lon: '-97.74', display_name: 'Austin, TX' }]
 const elements = { elements: [{ type: 'node', id: 1, lat: 30.271, lon: -97.741, tags: { name: 'Beans', amenity: 'cafe' } }] }
 
 let calls: string[]
-beforeEach(() => { calls = [] })
+beforeEach(() => { calls = []; clearResultCache() })
 afterEach(() => { vi.unstubAllGlobals() })
 
 function stub(handler: (url: string, init?: RequestInit) => Response | Promise<Response>) {
@@ -267,6 +267,36 @@ describe('drywall name search', () => {
     stub((url) => (new URL(url).searchParams.has('bounded') || !url.includes('nominatim') ? new Response('busy', { status: 503 }) : okJson(geo)))
     const r = await searchBusinesses(req(), { sleep: async () => {} })
     expect(r).toMatchObject({ status: 502, error: 'Map data servers are busy. Please try again in a minute.' })
+  })
+  it('retries a busy name search once before giving up on it', async () => {
+    let failed = 0
+    stub((url) => {
+      const u = new URL(url)
+      if (!u.hostname.includes('nominatim')) return new Response('busy', { status: 503 })
+      if (!u.searchParams.has('bounded')) return okJson(geo)
+      if (failed++ === 0) return new Response('slow down', { status: 429 })
+      return okJson(byTerm[u.searchParams.get('q') ?? ''] ?? [])
+    })
+    const r = await searchBusinesses(req(), { sleep: async () => {} })
+    expect('leads' in r && r.leads.map((l) => l.name)).toContain('Rocky Mountain Drywall')
+  })
+  it('reuses a good result, and shows it with its date when the map servers are busy later', async () => {
+    const same = { location: 'Cache Town', category: 'drywall' as const, radiusKm: 5, limit: 10 }
+    stubDrywall(() => okJson(tagged))
+    const first = await searchBusinesses(same, { sleep: async () => {} })
+    expect('leads' in first && first.leads).toHaveLength(3)
+
+    calls = []
+    const repeat = await searchBusinesses(same, { sleep: async () => {} })
+    expect(repeat).toMatchObject({ source: 'overpass', leads: 'leads' in first ? first.leads : [] })
+    expect(calls).toHaveLength(0) // the location is cached too
+
+    vi.spyOn(Date, 'now').mockReturnValue(Date.now() + 13 * 3600_000) // older than 12 hours
+    stub((url) => (url.includes('nominatim') ? new Response('busy', { status: 503 }) : new Response('busy', { status: 503 })))
+    const stale = await searchBusinesses(same, { sleep: async () => {} })
+    vi.restoreAllMocks()
+    expect(stale).toMatchObject({ source: 'overpass', notice: expect.stringContaining('results saved on') })
+    expect('leads' in stale && stale.leads).toHaveLength(3)
   })
   it('does not run a name search for categories without name terms', async () => {
     stub((url) => (url.includes('nominatim') ? okJson(geo) : okJson(elements)))

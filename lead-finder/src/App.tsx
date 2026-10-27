@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { SearchX, Target, Bookmark } from 'lucide-react'
 import clsx from 'clsx'
 import { DEMO_AUDITS, DEMO_LEADS } from './data/demo'
-import { ApiUnavailableError, auditLeads, fetchIntegrations, fetchPitch, fetchReviews, searchLeads, searchProjects, sendAlert } from './lib/api'
+import { ApiUnavailableError, BUSY_RETRY_MS, auditLeads, fetchIntegrations, fetchPitch, fetchReviews, searchLeads, searchProjects, sendAlert } from './lib/api'
 import { sendToCrm } from './lib/crm'
 import { INTENT_LABELS } from './lib/replies'
 import { csvFilename, leadsToCsv } from './lib/csv'
@@ -185,6 +185,8 @@ function Workspace({ profile, sender, header, settingsOpen, onOpenSettings }: Wo
     return true
   }, [])
 
+  const retryNotice = useCallback((n: number) => setNotice(`Map servers are busy. Trying again (${n} of ${BUSY_RETRY_MS.length})…`), [])
+
   const failRun = useCallback((e: unknown) => {
     if (e instanceof ApiUnavailableError) setPhase('unavailable')
     else {
@@ -218,7 +220,8 @@ function Workspace({ profile, sender, header, settingsOpen, onOpenSettings }: Wo
       setPhase('searching')
       let found: Lead[]
       try {
-        found = (await searchLeads({ ...base, location: places[i] }, ctrl.signal)).leads
+        found = (await searchLeads({ ...base, location: places[i] }, ctrl.signal, retryNotice)).leads
+        setNotice(undefined)
       } catch (e) {
         if (!live()) return
         if (e instanceof ApiUnavailableError || (e instanceof Error && e.message.startsWith('Access key required'))) return failRun(e)
@@ -234,7 +237,7 @@ function Workspace({ profile, sender, header, settingsOpen, onOpenSettings }: Wo
     setPlaceProgress(undefined)
     if (failed.length) setNotice(`Searched ${places.length - failed.length} of ${places.length} places. Couldn't search: ${failed.join('; ')}.`)
     setPhase('done')
-  }, [startRun, auditNew, failRun])
+  }, [startRun, auditNew, failRun, retryNotice])
 
   // Stops a run but keeps what was found; leads not checked yet show "Website not checked".
   function stopRun() {
@@ -499,7 +502,7 @@ function Workspace({ profile, sender, header, settingsOpen, onOpenSettings }: Wo
       />
       <main className="mx-auto w-full max-w-7xl flex-1 space-y-3 px-4 py-4">
         <SearchForm
-          onSearch={(req: SearchRequest) => runSearch((signal) => searchLeads(req, signal))}
+          onSearch={(req: SearchRequest) => runSearch((signal) => searchLeads(req, signal, retryNotice))}
           onSearchProjects={(req: ProjectsRequest) => runSearch((signal) => searchProjects(req, signal))}
           onSearchPlaces={runPlaces}
           searching={searching} demo={mode === 'demo'} profile={profile}
