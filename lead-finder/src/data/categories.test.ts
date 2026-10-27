@@ -7,7 +7,7 @@ describe('Nominatim fallback terms', () => {
   const terms = Object.fromEntries(CATEGORIES.map((c) => [c.id, c.nominatimTerms]))
   it('pins the terms per category', () => {
     expect(terms).toEqual({
-      any: ['restaurant', 'cafe', 'hairdresser', 'car repair', 'dentist'],
+      any: ['restaurant', 'cafe', 'hairdresser', 'car repair', 'dentist', 'electrician', 'clinic'],
       restaurants: ['restaurant'],
       cafes: ['cafe'],
       salons: ['hairdresser'],

@@ -95,7 +95,7 @@ describe('first run and search flow', () => {
     const user = userEvent.setup()
     render(<App />)
     await search(user)
-    expect(await screen.findByText("No businesses found. Try a bigger radius or 'Any business'.")).toBeTruthy()
+    expect(await screen.findByText("No businesses found. Try a bigger radius or 'All niches'.")).toBeTruthy()
   })
 
   it('shows the server error message (not the demo offer) for a JSON 404', async () => {

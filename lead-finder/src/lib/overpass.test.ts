@@ -19,6 +19,10 @@ describe('buildOverpassQuery', () => {
     const q = buildOverpassQuery(1, 2, 1, 'any', 10)
     for (const c of CATEGORIES) for (const s of c.selectors) expect(q).toContain(`nwr${s}["name"]`)
   })
+  it('any outputs each niche with its own cap, so one niche cannot crowd out the rest', () => {
+    const q = buildOverpassQuery(1, 2, 1, 'any', 60)
+    expect(q.match(/out center tags 20;/g)).toHaveLength(CATEGORIES.length - 1)
+  })
   it('lists four mirrors in order', () => {
     expect(OVERPASS_MIRRORS[0]).toContain('overpass-api.de')
     expect(OVERPASS_MIRRORS).toHaveLength(4)

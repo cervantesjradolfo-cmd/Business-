@@ -26,6 +26,13 @@ describe('finalizeLeads', () => {
     const out = finalizeLeads([mk('a', { name: 'A', distanceKm: 3 }), mk('b', { name: 'B', distanceKm: 1 }), mk('c', { name: 'C', distanceKm: 2 })], 2)
     expect(out.map((l) => l.id)).toEqual(['b', 'c'])
   })
+  it('balance shares the limit between niches instead of taking the nearest', () => {
+    const cafes = [1, 2, 3, 4].map((d) => mk(`c${d}`, { name: `C${d}`, distanceKm: d / 10 }))
+    const dentist = mk('d', { name: 'D', categoryId: 'dentists', distanceKm: 5 })
+    expect(finalizeLeads([...cafes, dentist], 2).map((l) => l.id)).toEqual(['c1', 'c2'])
+    expect(finalizeLeads([...cafes, dentist], 2, true).map((l) => l.id)).toEqual(['c1', 'd'])
+    expect(finalizeLeads([...cafes, dentist], 10, true)).toHaveLength(5)
+  })
 })
 
 describe('chain detection', () => {

@@ -13,9 +13,14 @@ export const OVERPASS_MIRRORS = [
 export function buildOverpassQuery(lat: number, lon: number, radiusKm: number, category: CategoryId, limit: number): string {
   const def = getCategory(category) ?? CATEGORIES[0]
   const around = `(around:${Math.round(radiusKm * 1000)},${lat},${lon})`
-  const parts = def.selectors.map((sel) => `nwr${sel}["name"]${around};`).join('')
+  const union = (selectors: string[]) => `(${selectors.map((sel) => `nwr${sel}["name"]${around};`).join('')})`
   const max = Math.min(limit * 3, 600)
-  return `[out:json][timeout:25];(${parts});out center tags ${max};`
+  if (def.id !== 'any') return `[out:json][timeout:25];${union(def.selectors)};out center tags ${max};`
+  // All niches: each category is output with its own cap, so a busy niche (restaurants) can't
+  // crowd the others out of the answer.
+  const specific = CATEGORIES.filter((c) => c.id !== 'any')
+  const each = Math.max(20, Math.ceil(max / specific.length))
+  return `[out:json][timeout:25];${specific.map((c) => `${union(c.selectors)};out center tags ${each};`).join('')}`
 }
 
 type Tags = Record<string, string>

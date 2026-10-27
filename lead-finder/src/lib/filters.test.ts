@@ -19,6 +19,10 @@ describe('applyFilters', () => {
     expect(applyFilters([a, chain], f).map((l) => l.id)).toEqual(['a', 'chain'])
   })
   it('has phone', () => expect(applyFilters([a, c], { ...f, hasPhone: true }).map((l) => l.id)).toEqual(['a']))
+  it('niche', () => {
+    const d = mk('d', { categoryId: 'dentists' })
+    expect(applyFilters([a, d], { ...f, niche: 'dentists' }).map((l) => l.id)).toEqual(['d'])
+  })
 })
 
 describe('sortLeads', () => {

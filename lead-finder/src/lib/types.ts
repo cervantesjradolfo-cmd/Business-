@@ -120,6 +120,7 @@ export type Filters = {
   minScore: number; noWebsiteOnly: boolean; hasPhone: boolean; showChains: boolean
   hotOnly?: boolean // only heat 4 and 5
   sortByHeat?: boolean // hottest first instead of best score first
+  niche?: string // only this categoryId (or 'other')
 }
 
 // API contracts (all JSON; errors are { error: string } with 4xx/5xx)

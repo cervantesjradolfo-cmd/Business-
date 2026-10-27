@@ -34,8 +34,20 @@ export function markChains(leads: Lead[]): Lead[] {
   })
 }
 
-export function finalizeLeads(leads: Lead[], limit: number): Lead[] {
-  return markChains(dedupeLeads(leads))
-    .sort((a, b) => a.distanceKm - b.distanceKm)
-    .slice(0, limit)
+// Takes the nearest of each niche in turn, so `limit` is shared fairly between niches.
+function balanceByCategory(leads: Lead[], limit: number): Lead[] {
+  const groups = new Map<string, Lead[]>()
+  for (const l of leads) groups.set(l.categoryId, [...(groups.get(l.categoryId) ?? []), l])
+  const queues = [...groups.values()]
+  const out: Lead[] = []
+  for (let i = 0; out.length < limit && queues.some((q) => i < q.length); i++) {
+    for (const q of queues) if (i < q.length && out.length < limit) out.push(q[i])
+  }
+  return out.sort((a, b) => a.distanceKm - b.distanceKm)
+}
+
+// balance: an all-niches search, where each niche gets its share of `limit`.
+export function finalizeLeads(leads: Lead[], limit: number, balance = false): Lead[] {
+  const sorted = markChains(dedupeLeads(leads)).sort((a, b) => a.distanceKm - b.distanceKm)
+  return balance ? balanceByCategory(sorted, limit) : sorted.slice(0, limit)
 }

@@ -36,6 +36,7 @@ export function applyFilters(leads: ScoredLead[], f: Filters): ScoredLead[] {
       (f.showChains || !l.isChain) &&
       (!f.noWebsiteOnly || l.gaps.some((g) => g.id === 'no_website')) &&
       (!f.hasPhone || !!l.phone?.trim()) &&
-      (!f.hotOnly || l.heat >= HOT_HEAT),
+      (!f.hotOnly || l.heat >= HOT_HEAT) &&
+      (!f.niche || l.categoryId === f.niche),
   )
 }

@@ -1,6 +1,6 @@
 // The business categories offered in the search form.
 // `selectors` are OpenStreetMap (Overpass) tag filters. Add a category by adding an entry
-// here and its id to CategoryId in src/lib/types.ts. "Any business" is computed from the rest.
+// here and its id to CategoryId in src/lib/types.ts. "All niches" is computed from the rest.
 import type { CategoryId } from '../lib/types.js'
 
 export type CategoryDef = {
@@ -95,10 +95,10 @@ const SPECIFIC: CategoryDef[] = [
 export const CATEGORIES: CategoryDef[] = [
   {
     id: 'any',
-    label: 'Any business',
+    label: 'All niches (every category)',
     singular: 'Business',
     selectors: SPECIFIC.flatMap((c) => c.selectors),
-    nominatimTerms: ['restaurant', 'cafe', 'hairdresser', 'car repair', 'dentist'],
+    nominatimTerms: ['restaurant', 'cafe', 'hairdresser', 'car repair', 'dentist', 'electrician', 'clinic'],
   },
   ...SPECIFIC,
 ]

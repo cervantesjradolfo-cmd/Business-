@@ -5,6 +5,7 @@ Lead Finder finds local businesses that are missing the things you build (a webs
 ## What it does
 
 1. You enter a town (or ZIP or address), pick a category and a radius.
+   Pick **All niches** to search every category at once: each niche gets a fair share of the results, and chips above the list show how many leads each niche has (and how many have no website). Click a chip to see just that niche.
 2. It lists businesses from OpenStreetMap, then checks each business's website homepage for gaps (no website, not mobile-friendly, no online booking, no chat, outdated, slow and more). The same check looks for the business's email address on the homepage, or on its contact or about page when the homepage has none.
 3. Each lead gets an opportunity score from 0 to 100 (no website scores highest), a list of gaps in plain words, recommended services and an estimated deal value.
 4. For each lead you get a cold email, a text message and a phone opener. Templates are the default. With an Anthropic API key they are written by Claude.

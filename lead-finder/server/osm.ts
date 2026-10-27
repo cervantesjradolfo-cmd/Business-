@@ -155,12 +155,12 @@ export async function searchBusinesses(
     def?.nameSearchTerms ? searchByName(req, center, deps) : Promise.resolve(null),
   ])
   if (found) {
-    return { center, leads: finalizeLeads([...parseOverpass(found.json, center), ...(byName ?? [])], req.limit), source: 'overpass' }
+    return { center, leads: finalizeLeads([...parseOverpass(found.json, center), ...(byName ?? [])], req.limit, req.category === 'any'), source: 'overpass' }
   }
   if (byName) {
     return {
       center,
-      leads: finalizeLeads(byName, req.limit),
+      leads: finalizeLeads(byName, req.limit, req.category === 'any'),
       source: 'nominatim',
       notice: 'Map servers were busy, so results came from a name search and may be incomplete.',
     }
@@ -180,7 +180,7 @@ export async function searchBusinesses(
       } catch (err) {
         lastErr = err
       }
-      if (found.length >= req.limit) break
+      if (req.category !== 'any' && found.length >= req.limit) break
     }
     if (!anyOk) throw lastErr
     // "hairdresser" returns both salons and barbers: split them by name/tag.
@@ -188,7 +188,7 @@ export async function searchBusinesses(
     if (req.category === 'salons') found = found.filter((l) => l.categoryId !== 'barbers')
     return {
       center,
-      leads: finalizeLeads(found, req.limit),
+      leads: finalizeLeads(found, req.limit, req.category === 'any'),
       source: 'nominatim',
       notice: 'Map servers were busy, so results came from a simpler search and may be incomplete.',
     }

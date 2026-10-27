@@ -25,6 +25,7 @@ import EmptyState from './components/EmptyState'
 import Filters from './components/Filters'
 import Header, { NEW_PROFILE } from './components/Header'
 import LeadDetail from './components/LeadDetail'
+import NicheBreakdown from './components/NicheBreakdown'
 import LeadList from './components/LeadList'
 import OutreachTab from './components/OutreachTab'
 import ProgressBar, { type PlaceProgress } from './components/ProgressBar'
@@ -124,12 +125,17 @@ function Workspace({ profile, sender, header, settingsOpen, onOpenSettings }: Wo
   const allScored = tab === 'results' ? resultScored : savedScored // the Outreach tab lists saved leads too
   // Chains are hidden by default in results; leads the user saved are always listed.
   // Client profiles don't use website gaps, so their leads are ranked by how easy they are to reach.
+  const effectiveFilters = useMemo(
+    () => ({ ...filters, ...(tab === 'saved' ? { showChains: true } : {}), ...(client ? { minScore: 0, noWebsiteOnly: false } : {}) }),
+    [filters, tab, client],
+  )
+  // What the niche chips count: every other filter applied, but not the niche itself.
+  const nicheBase = useMemo(() => applyFilters(allScored, { ...effectiveFilters, niche: undefined }), [allScored, effectiveFilters])
   const visible = useMemo(() => {
-    const f = { ...filters, ...(tab === 'saved' ? { showChains: true } : {}), ...(client ? { minScore: 0, noWebsiteOnly: false } : {}) }
-    const list = applyFilters(allScored, f)
+    const list = applyFilters(allScored, effectiveFilters)
     const sorted = client ? sortByContact(list) : sortLeads(list)
     return filters.sortByHeat ? sortByHeat(sorted) : sorted
-  }, [allScored, filters, tab, client])
+  }, [allScored, effectiveFilters, filters.sortByHeat, client])
   const chainCount = useMemo(() => allScored.filter((l) => l.isChain).length, [allScored])
   const selected = selectedId ? allScored.find((l) => l.id === selectedId) : undefined
   const savedCount = Object.keys(saved).length
@@ -149,6 +155,7 @@ function Workspace({ profile, sender, header, settingsOpen, onOpenSettings }: Wo
     setSelectedId(undefined)
     setProgress({ done: 0, total: 0 })
     setPlaceProgress(undefined)
+    setFilters((f) => ({ ...f, niche: undefined }))
     setTab('results')
     return { ctrl, live: () => runRef.current === ctrl && !ctrl.signal.aborted }
   }, [])
@@ -475,7 +482,7 @@ function Workspace({ profile, sender, header, settingsOpen, onOpenSettings }: Wo
           </EmptyState>
         : <EmptyState icon={<Target className="h-8 w-8" />} title="Search a town and category to find leads">Lead Finder lists local businesses and shows what they are missing online.</EmptyState>
     } else if (leads.length === 0) {
-      emptyView = <EmptyState icon={<SearchX className="h-8 w-8" />} title="No businesses found">No businesses found. Try a bigger radius or 'Any business'.</EmptyState>
+      emptyView = <EmptyState icon={<SearchX className="h-8 w-8" />} title="No businesses found">No businesses found. Try a bigger radius or 'All niches'.</EmptyState>
     } else {
       emptyView = <EmptyState icon={<SearchX className="h-8 w-8" />} title="No leads match these filters">Lower the minimum score or clear a filter.</EmptyState>
     }
@@ -515,6 +522,7 @@ function Workspace({ profile, sender, header, settingsOpen, onOpenSettings }: Wo
         )}
 
         {tab !== 'outreach' && (allScored.length > 0 || tab === 'saved') && <Filters client={client} filters={filters} onChange={setFilters} shown={visible.length} total={allScored.length} chainCount={tab === 'results' ? chainCount : 0} />}
+        {tab !== 'outreach' && <NicheBreakdown leads={nicheBase} value={filters.niche} onChange={(niche) => setFilters((f) => ({ ...f, niche }))} />}
 
         {tab !== 'outreach' && <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_420px]">
           <div className="min-w-0">
